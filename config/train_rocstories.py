@@ -30,13 +30,13 @@ n_head = 6
 n_embd = 384
 dropout = 0.1
 
-# Tuned Task 1 schedule: slightly lower LR, lighter decay, and shorter run because
-# the previous rerun peaked early instead of benefiting from the full 12k steps.
+# Tuned Task 1 schedule: keep the current best main settings and lower only min_lr
+# to test whether slightly finer late-stage convergence can reduce perplexity further.
 learning_rate = 4e-4
 weight_decay = 5e-2
 max_iters = 8000
 lr_decay_iters = 8000
-min_lr = 6e-5
+min_lr = 4e-5
 beta2 = 0.99
 warmup_iters = 300
 
