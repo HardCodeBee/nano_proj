@@ -5,7 +5,7 @@ assignment's 32M parameter limit, while using the tuned schedule selected after 
 first optimization rerun.
 """
 
-out_dir = "out-rocstories"
+out_dir = "out-rocstories-minlr4e5"
 eval_interval = 200
 eval_iters = 100
 log_interval = 10
