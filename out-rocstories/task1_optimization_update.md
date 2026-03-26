@@ -242,6 +242,58 @@ Exact public test evaluation:
 
 This became the new best validated Task 1 result.
 
+## Remote `min_lr = 2e-5` Follow-Up (`r5`)
+
+After the `r4` run improved again, one more follow-up tested whether lowering the cosine floor from `3e-5` to `2e-5` could still help the final stage of the same 8k-step recipe.
+
+- `dropout = 0.1`
+- `learning_rate = 4e-4`
+- `weight_decay = 0.05`
+- `max_iters = 8000`
+- `lr_decay_iters = 8000`
+- `warmup_iters = 300`
+- `min_lr = 2e-5`
+- `beta2 = 0.99`
+- `eval_iters = 100`
+
+Best checkpoint metadata from the copied-back snapshot:
+
+- `iter_num = 8000`
+- `best_val_loss = 3.2774`
+
+Exact public test evaluation:
+
+- `avg_loss = 3.242`
+- `ppl = 25.59`
+
+This became the new best validated Task 1 result.
+
+## Remote `min_lr = 1e-5` Follow-Up (`r6`)
+
+After the `r5` improvement, one final follow-up pushed the cosine floor down once more to check whether the same 8k-step recipe still benefited from an even smaller ending learning rate.
+
+- `dropout = 0.1`
+- `learning_rate = 4e-4`
+- `weight_decay = 0.05`
+- `max_iters = 8000`
+- `lr_decay_iters = 8000`
+- `warmup_iters = 300`
+- `min_lr = 1e-5`
+- `beta2 = 0.99`
+- `eval_iters = 100`
+
+Best checkpoint metadata from the copied-back snapshot:
+
+- `iter_num = 8000`
+- `best_val_loss = 3.2763`
+
+Exact public test evaluation:
+
+- `avg_loss = 3.242`
+- `ppl = 25.57`
+
+This became the new best validated Task 1 result.
+
 ## Updated Best Result Table
 
 - Original baseline:
@@ -258,10 +310,14 @@ This became the new best validated Task 1 result.
   - `ppl = 25.92`
 - Remote checkpoint-selection follow-up:
   - `ppl = 25.83`
-- Remote latest best result (`min_lr = 3e-5`):
+- Remote follow-up (`min_lr = 3e-5`):
   - `ppl = 25.65`
+- Remote follow-up (`min_lr = 2e-5`):
+  - `ppl = 25.59`
+- Remote latest best result (`min_lr = 1e-5`):
+  - `ppl = 25.57`
 
-The current best validated Task 1 result is now `ppl = 25.65`.
+The current best validated Task 1 result is now `ppl = 25.57`.
 
 ## Checked-In Config Restored To Best State
 
@@ -273,8 +329,8 @@ The checked-in local `config/train_rocstories.py` has now been restored to the c
 - `max_iters = 8000`
 - `lr_decay_iters = 8000`
 - `warmup_iters = 300`
-- `min_lr = 3e-5`
+- `min_lr = 1e-5`
 - `beta2 = 0.99`
 - `eval_iters = 100`
 
-This keeps the checked-in training config aligned with the exact best public-test result of `ppl = 25.65`.
+This keeps the checked-in training config aligned with the exact best public-test result of `ppl = 25.57`.

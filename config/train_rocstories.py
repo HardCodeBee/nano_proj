@@ -2,7 +2,7 @@
 This config defines the current best validated Task 1 ROCStories training setup.
 It keeps the model at official nanoGPT baby-GPT scale so the run stays within the
 assignment's 32M parameter limit while matching the main hyperparameters that
-produced the current best remote exact public-test result of 25.65 PPL.
+produced the current best remote exact public-test result of 25.57 PPL.
 """
 
 out_dir = "out-rocstories"

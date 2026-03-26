@@ -52,7 +52,7 @@ Based on these statistics, `block_size=128` was kept because one full story stil
 - Scheduler: cosine decay
 - Warmup iters: 300
 - Decay iters: 8000
-- Min learning rate: 3e-5
+- Min learning rate: 1e-5
 - Max iters: 8000
 - `beta2 = 0.99`
 - `weight_decay = 0.05`
@@ -61,7 +61,7 @@ Based on these statistics, `block_size=128` was kept because one full story stil
 
 Checked-in config note:
 
-- The current local `config/train_rocstories.py` is aligned with the best validated Task 1 setup itself: `max_iters = 8000`, `min_lr = 3e-5`, `beta2 = 0.99`, and `eval_iters = 100`.
+- The current local `config/train_rocstories.py` is aligned with the best validated Task 1 setup itself: `max_iters = 8000`, `min_lr = 1e-5`, `beta2 = 0.99`, and `eval_iters = 100`.
 
 Approximate wall-clock time:
 
@@ -76,12 +76,13 @@ Approximate wall-clock time:
 - Step 1000: val loss 4.0420
 - Step 2000: val loss 3.6067
 - Step 4200: val loss 3.3731
-- Step 7000: val loss 3.2977
-- Step 7200: val loss 3.2872
-- Step 7400: val loss 3.2859
-- Step 8000: val loss 3.2789
+- Step 7000: val loss 3.2999
+- Step 7200: val loss 3.2889
+- Step 7400: val loss 3.2821
+- Step 7600: val loss 3.2850
+- Step 8000: val loss 3.2763
 
-Note: the best exact public-test result now comes from the remote follow-up that changed only `min_lr` from `4e-5` to `3e-5`. Earlier remote follow-ups at `6e-5`, `4e-5`, a 10k-step continuation, and a smoother-checkpoint-selection run all performed slightly worse.
+Note: the best exact public-test result now comes from the remote follow-up that changed only `min_lr` from `2e-5` to `1e-5`. Earlier remote follow-ups at `6e-5`, `4e-5`, `3e-5`, `2e-5`, a 10k-step continuation, and a smoother-checkpoint-selection run all performed slightly worse or only marginally better.
 
 ## PPL Reduction Path
 
@@ -93,6 +94,8 @@ Note: the best exact public-test result now comes from the remote follow-up that
 - Remote 10k-step follow-up: longer schedule -> `avg_loss = 3.255`, `ppl = 25.92`
 - Remote checkpoint-selection follow-up: `beta2 = 0.995`, `eval_iters = 200` -> `avg_loss = 3.251`, `ppl = 25.83`
 - Remote `r4` follow-up: `min_lr = 3e-5` -> `avg_loss = 3.244`, `ppl = 25.65`
+- Remote `r5` follow-up: `min_lr = 2e-5` -> `avg_loss = 3.242`, `ppl = 25.59`
+- Remote `r6` follow-up: `min_lr = 1e-5` -> `avg_loss = 3.242`, `ppl = 25.57`
 
 ## Final Quantitative Result
 
@@ -100,23 +103,23 @@ Exact evaluation on the full public ROCStories test split using `eval.py`:
 
 - Paragraphs used: 19,633
 - Predicted tokens: 988,345
-- Average loss: 3.244
-- Perplexity: 25.65
+- Average loss: 3.242
+- Perplexity: 25.57
 
 Improvement over the original Task 1 baseline:
 
-- Average loss: `3.364 -> 3.244`
-- Perplexity: `28.89 -> 25.65`
+- Average loss: `3.364 -> 3.242`
+- Perplexity: `28.89 -> 25.57`
 
 Improvement over the first optimization rerun:
 
-- Average loss: `3.318 -> 3.244`
-- Perplexity: `27.60 -> 25.65`
+- Average loss: `3.318 -> 3.242`
+- Perplexity: `27.60 -> 25.57`
 
 Improvement over the previous best remote result:
 
-- Average loss: `3.247 -> 3.244`
-- Perplexity: `25.70 -> 25.65`
+- Average loss: `3.242 -> 3.242` (same to three decimals)
+- Perplexity: `25.59 -> 25.57`
 
 ## Qualitative Samples
 
@@ -150,7 +153,7 @@ Prompt: `Tom decided to cook dinner for his friends.`
 - Current local preparation config: `config/train_rocstories.py`
 - Earlier validated remote snapshot: `out-rocstories-remote-r1/`
 - Later remote comparison snapshot: `out-rocstories-remote-r2/`
-- Current best remote snapshot: `out-rocstories-remote-r4/`
+- Current best remote snapshot: `out-rocstories-remote-r6/`
 - Sampling defaults: `out-rocstories/sample_params.json`
 - Summary: `out-rocstories/task1_summary.md`
 - Optimization note: `out-rocstories/task1_optimization_update.md`
