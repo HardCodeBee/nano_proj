@@ -1,0 +1,446 @@
+/**
+ * File role:
+ * This is the detailed Task 1 process log.
+ * Read this file when you want the full workflow, reasoning, and explanations behind each step.
+ */
+
+Update note:
+This text file mainly documents the original Task 1 baseline run.
+For the synchronized optimization rerun with `dropout=0.1`, `max_iters=12000`, and the refreshed
+final metrics (`avg_loss=3.318`, `ppl=27.60`), see `out-rocstories/task1_summary.md` and
+`out-rocstories/task1_optimization_update.md`.
+
+Task 1 详细流程复述：在 ROCStories 上从头训练 nanoGPT
+
+这份说明完整复述我刚才完成 Task 1 的全过程，并重点解释每一步主要操作背后的原理、这样做的原因，以及这些决策和作业要求之间的关系。
+
+一、任务目标和约束确认
+
+在真正动手之前，我先读取了你上传到 instruction 目录下的说明文件，尤其是：
+
+1. Mini-Project 1 NanoGPT.txt
+2. FurtherInstructions.txt
+3. Qwen_scoring_prompt tha.txt
+
+这里最重要的是先把“能做什么”和“不能做什么”界定清楚，因为 Task 1 不是随便训一个模型，而是一个受严格约束的作业任务。确认后的关键约束如下：
+
+1. 必须从头训练，不能微调现有预训练模型。
+2. baseline 需要遵循官方 nanoGPT 的 baby GPT 配置思路。
+3. 模型参数量不能超过 32M。
+4. 任务对象是 ROCStories，要完成数据处理、训练、量化评估和定性样例展示。
+5. 最终提交的模型目录里需要保留 ckpt.pt；如果改了结构，还要一并提交相关代码。
+
+这些约束直接决定了后面的所有技术选择。比如：
+
+1. 我不能使用 `init_from=gpt2` 之类的方式开始训练，因为这属于使用外部预训练权重。
+2. 我不能为了追求更好的效果把模型扩大到 50M、100M 参数，因为这会违反参数限制。
+3. 我需要让整个流程是“从公开数据集开始，到训练、验证、采样、评估全都能复现”的，而不是只给一个结果数字。
+
+
+二、先检查当前仓库和环境状态
+
+在开始补代码前，我先查看了项目结构，确认这份仓库实际上是一个基于官方 nanoGPT 修改过的实验仓库。
+
+我重点检查了这些文件：
+
+1. `train.py`
+2. `model.py`
+3. `sample.py`
+4. `eval.py`
+5. `sample_batch.py`
+6. `config/` 目录
+7. `data/rocstories/` 目录
+
+检查后的结论是：
+
+1. `train.py` 和 `model.py` 是官方 nanoGPT 风格的核心训练和模型实现。
+2. `eval.py` 是额外扩展出来的评估脚本，可以对一组段落文本计算平均 loss 和 perplexity。
+3. `sample_batch.py` 是一个批量生成脚本，可以用一组 prompts 生成多条结果并写成 jsonl。
+4. `data/rocstories/` 目录里只有 `eval_prompts.txt` 和 `eval_stories.txt`，没有正式的训练语料准备脚本，也没有 `train.bin` 和 `val.bin`。
+
+这意味着仓库里并没有完成 Task 1 所需的 ROCStories 训练数据管线，所以第一优先级不是直接训练，而是先把数据准备这一步补上。
+
+随后我还检查了运行环境，确认本地 Python 虚拟环境、PyTorch 和 GPU 是否可用。结果是：
+
+1. `torch 2.10.0+cu126`
+2. `cuda_available True`
+3. GPU 为 `NVIDIA GeForce RTX 4060 Laptop GPU`
+
+这一步很重要，原理上是在做“资源边界确认”。如果没有 GPU，后续所有训练计划都要改写；如果没有 `datasets` 或 `tiktoken`，数据预处理方式也要调整。确认资源完整以后，后面的设计才有现实基础。
+
+
+三、确认 ROCStories 数据集结构
+
+Task 1 的数据集指定为 Hugging Face 上的 `mintujupally/ROCStories`。我先尝试读取它的结构，确认它到底是按什么形式组织的。
+
+读取后得到的信息是：
+
+1. `train` split：78,528 条
+2. `test` split：19,633 条
+3. 每条样本只有一个字段：`text`
+
+这一步背后的原理是：在写数据预处理脚本之前，必须先知道原始数据的字段形式。否则就容易出现预处理脚本写错字段名、错误分段、或者对不存在的 label 字段做操作的问题。
+
+由于每条样本本身就是一整个短故事文本，所以它非常适合直接当作语言模型训练样本，而不需要额外拼接复杂结构。
+
+
+四、设计 ROCStories 的数据处理方案
+
+这一步是整个 Task 1 的关键，因为数据如何转成 language model 可训练格式，直接决定训练质量和评估行为。
+
+我最终采用的方案是：
+
+1. 使用 GPT-2 BPE tokenizer，也就是 `tiktoken.get_encoding("gpt2")`
+2. 对每条故事单独编码
+3. 每条故事末尾追加一个 `eot` token，也就是 GPT-2 的 end-of-text token `50256`
+4. 将所有故事的 token 顺序拼接，分别写入 `train.bin` 和 `val.bin`
+
+这背后的原理如下。
+
+第一，为什么使用 GPT-2 BPE，而不是字符级 tokenization？
+
+因为 ROCStories 是自然语言短故事数据集，字符级训练虽然也能跑，但 token 序列会更长，训练效率更低，而且语义单位会被切得太细。GPT-2 BPE 能更好地把常见词、词缀和子词结构编码成更紧凑的 token 序列，从而提高样本利用率和训练效率。对于一个 30M 左右的小模型来说，这种效率提升很重要。
+
+第二，为什么每条故事后面要追加 `eot`？
+
+因为语言模型训练时看到的是一个长 token 流。如果直接把故事一个接一个地拼起来，不告诉模型“这里结束、那里开始”，模型会把相邻两条故事误当作自然连续文本。追加 `eot` 的作用就是显式标记样本边界，让模型学习“一个故事在这里收束，下一个故事从新上下文开始”。这通常有助于生成时更好地收尾，也更有利于学会 ROCStories 的单条故事节奏。
+
+第三，为什么把公开 test split 转成 `val.bin`？
+
+因为 instruction 明确写了：可以使用 ROCStories 的 test set 做本地评估和模型选择，最终评分会在私有 held-out 数据上进行。因此把公开 test split 作为本地 validation/evaluation split 是合规的，而且也能和现有 nanoGPT 训练代码自然衔接，因为 `train.py` 默认期望数据目录下有 `train.bin` 和 `val.bin`。
+
+
+五、实现 `data/rocstories/prepare.py`
+
+基于上面的设计，我新增了：
+
+`data/rocstories/prepare.py`
+
+这个脚本的职责是：
+
+1. 下载或读取 ROCStories 数据集
+2. 把 `train` split 映射为训练集，把 `test` split 映射为本地验证集
+3. 对每条故事做 GPT-2 BPE 编码
+4. 在每条故事末尾追加 `eot`
+5. 统计每条故事 token 长度
+6. 生成 `train.bin` 和 `val.bin`
+7. 写出 `dataset_stats.json`
+
+为什么还要额外写 `dataset_stats.json`？
+
+因为这不是“为了好看”，而是为了后面做合理的模型和上下文长度决策。训练前如果不知道 ROCStories 的真实长度分布，就很难判断 `block_size` 应该设成 64、128、256 还是更高。统计文件能给出客观依据，而不是拍脑袋配置。
+
+在第一次运行这个脚本时，还遇到一个具体问题：我原先把 tokenizer 对象作为局部变量传给 `datasets.map(..., num_proc=8)` 的多进程分词过程，结果子进程拿不到这个变量，触发了 `NameError: name 'enc' is not defined`。
+
+这个问题背后的原理是：多进程 map 并不会自动继承所有局部闭包状态，尤其在 Windows 环境下更容易出现序列化和作用域问题。所以我把 tokenizer 改成模块级常量 `ENC`，让所有工作进程都可以稳定访问，这样才成功完成预处理。
+
+
+六、读取数据统计，反推合适的上下文长度
+
+预处理完成后，我读取了 `data/rocstories/dataset_stats.json`，得到如下统计：
+
+1. train stories：78,528
+2. val stories：19,633
+3. train tokens：4,111,142
+4. val tokens：1,027,611
+5. mean story length：52.35 tokens
+6. p95 story length：69 tokens
+7. max story length：109 tokens
+
+基于这些统计，我把 `block_size` 设为 128。
+
+为什么这是合理的？
+
+因为 `block_size` 决定模型一次能看到多长的上下文。ROCStories 的故事很短，95% 的样本都不超过 69 tokens，最长样本也只有 109 tokens，因此：
+
+1. `block_size=64` 可能会截断一部分故事，不利于学习完整五句结构。
+2. `block_size=128` 足够覆盖几乎全部样本，能让模型完整看到一条故事。
+3. `block_size=256` 虽然也能用，但显存占用和计算量更大，而对这种短故事任务没有明显收益。
+
+所以 `128` 是一个兼顾覆盖率和效率的选择。
+
+
+七、确定模型结构，满足 32M 约束
+
+Task 1 有一个硬性要求：模型总参数量不能超过 32M。
+
+我采用的结构是官方 baby GPT 配置思路：
+
+1. `n_layer = 6`
+2. `n_head = 6`
+3. `n_embd = 384`
+4. `dropout = 0.2`
+5. `bias = False`
+6. `block_size = 128`
+
+之后我专门实例化模型，实际测了一次参数量，结果是：
+
+`29.94M`
+
+为什么我没有继续调大模型？
+
+因为 instruction 已经明确说 baseline 对应官方 baby GPT 配置，而且它本身就大约在 30M 左右，正好卡在作业允许的规模区间里。对于 Task 1 来说，重点不是做超大模型，而是把一个规范、合理、从头训练的基线跑完整。这个结构已经非常适合作为 Task 1 的主体模型。
+
+
+八、编写训练配置 `config/train_rocstories.py`
+
+我新增了：
+
+`config/train_rocstories.py`
+
+它的作用是把 Task 1 所需的超参数从 `train.py` 的默认 openwebtext 训练配置中切换到 ROCStories 任务设置。
+
+关键配置包括：
+
+1. `dataset = "rocstories"`
+2. `out_dir = "out-rocstories"`
+3. `block_size = 128`
+4. `n_layer = 6`
+5. `n_head = 6`
+6. `n_embd = 384`
+7. `dropout = 0.2`
+8. `learning_rate = 6e-4`
+9. `warmup_iters = 200`
+10. `lr_decay_iters = 6000`
+11. `min_lr = 6e-5`
+12. `max_iters = 6000`
+13. `compile = False`
+
+这里有几个关键原理。
+
+第一，为什么 `compile=False`？
+
+虽然 `torch.compile()` 理论上能加速，但在 Windows、消费级 GPU、以及较短训练任务下，有时会带来较长编译开销，甚至稳定性问题。Task 1 的目标是把训练稳定完成，因此我优先选择了更稳妥的设置。
+
+第二，为什么学习率沿用 `6e-4` 量级？
+
+这是 nanoGPT 里训练从头开始的小中型 GPT 时常用的学习率量级，尤其在没有使用预训练初始化的情况下，需要一个足够大的初始学习率快速离开随机参数状态；同时再配合 warmup 和 cosine decay，让后期逐渐收敛。
+
+第三，为什么 `max_iters=6000`？
+
+因为 ROCStories 规模不算大，平均故事也很短。6000 步对于这个规模的 30M 模型是一个比较像样的训练长度，既足以显著下降困惑度，也不会无限拉长实验时间。
+
+
+九、先做 dry run，验证整条训练链路
+
+在真正跑长训练之前，我先运行了一个非常短的训练试跑，也就是只跑几步，看这些环节是否全部正常：
+
+1. 数据是否能成功加载
+2. 模型是否能正确实例化
+3. optimizer 是否正常建立
+4. forward/backward 是否无报错
+5. checkpoint 是否能正常保存
+
+这一步背后的原理其实和工程中的 smoke test 一样。因为如果直接开一个几千步训练，结果 10 分钟后才发现配置写错、路径不对、数据 bin 文件不兼容，那会浪费大量时间。
+
+dry run 成功后，我确认了：
+
+1. ROCStories 数据格式和 `train.py` 是兼容的
+2. 模型参数规模和显存占用没有超限
+3. checkpoint 能正常写到 `out-rocstories`
+
+
+十、调 batch size，不改任务本质但优化训练效率
+
+在 dry run 通过后，我没有立刻开 6000 步正式训练，而是先测试不同 batch 配置的实际吞吐。
+
+我比较了这些设置：
+
+1. `batch_size=16, gradient_accumulation_steps=4`
+2. `batch_size=24, gradient_accumulation_steps=4`
+3. `batch_size=32, gradient_accumulation_steps=4`
+4. `batch_size=64, gradient_accumulation_steps=1`
+5. `batch_size=48, gradient_accumulation_steps=2`
+6. 更大的 `batch_size=96`、`128`
+
+为什么要做这一步？
+
+因为“有效 tokens per iteration”虽然重要，但同样总 token 数下，不同的微批次和梯度累积组合在真实硬件上的效率差别会非常大。对于同一块 GPU：
+
+1. 太小的 batch 会让 GPU 利用率不足。
+2. 太大的 batch 会导致显存压力增大、调度变慢，甚至触发极端性能下降。
+3. 梯度累积本身也有额外开销。
+
+实际测试结果显示：
+
+1. `batch_size=64, gradient_accumulation_steps=1` 在这块 4060 上明显最快。
+2. 更大的 batch 例如 96，反而出现极慢情况，不再划算。
+
+因此最终正式配置改成：
+
+1. `batch_size = 64`
+2. `gradient_accumulation_steps = 1`
+3. `tokens_per_iteration = 8192`
+
+这里要强调：这不是在改变模型，不影响“从头训练”和“参数量不超过 32M”的作业要求，它只是一次训练调度优化。
+
+
+十一、分阶段训练，而不是盲目一次跑满
+
+正式训练时，我没有一上来就机械地一次跑 6000 步然后什么都不看，而是采用了分阶段推进：
+
+1. 先训练到 400 步
+2. 然后继续到 1200 步
+3. 再继续到 2400 步
+4. 再继续到 4000 步
+5. 最后跑满 6000 步
+
+每一段训练之间，我都检查验证损失是否还在稳定下降。
+
+为什么这样做？
+
+因为训练一个语言模型时，最重要的不是“把计划写死”，而是持续观察 loss 曲线的实际形状。如果已经明显过拟合或进入平台期，就没必要继续烧时间；如果还在持续下降，就说明继续训练很可能还有收益。
+
+从结果看，验证损失一路下降：
+
+1. step 0: `10.8924`
+2. step 400: `4.5335`
+3. step 1200: `3.8429`
+4. step 2400: `3.5605`
+5. step 4000: `3.4371`
+6. best sampled val estimate around step 5800: `3.3830`
+
+这说明训练过程总体健康，没有明显的早期过拟合迹象，所以把训练跑满到 6000 步是合理的。
+
+
+十二、为什么训练时的验证 loss 还不够，必须再做一次精确评估
+
+训练过程中 `train.py` 打印的 `val loss` 其实不是“整份验证集的精确 loss”，而是通过随机抽样 batch 估计出来的均值。
+
+这个做法在训练监控里非常常见，因为它速度快，适合每隔几百步看一下趋势。但是对于作业报告来说，仅仅引用抽样估计通常还不够稳妥。因此我又做了一件事：
+
+1. 把公开 test split 导出成一个完整文本文件 `data/rocstories/test_full.txt`
+2. 用 `eval.py` 对整份 test 集逐段计算 loss 和 perplexity
+
+为什么这一步更准确？
+
+因为 `eval.py` 会遍历每一个段落，把每个段落都编码后送入模型，并对所有预测 token 的负对数似然做全量累加，再除以总 token 数，最后计算 perplexity。这个过程比训练中的随机 batch 采样评估更接近“完整测试集上的真实平均表现”。
+
+最终精确评估得到：
+
+1. `avg_loss = 3.364`
+2. `ppl = 28.89`
+
+这就是我认为最适合写进 Task 1 报告的主结果。
+
+
+十三、生成样例，完成定性分析部分
+
+Task 1 不能只给一个 perplexity 数字，还要求 qualitative samples，也就是生成样例。
+
+我使用了这些 prompt：
+
+1. `Emily forgot her umbrella before leaving for work.`
+2. `Tom decided to cook dinner for his friends.`
+
+并测试了不同解码设置，例如：
+
+1. `temperature=0.7, top_k=40`
+2. `temperature=0.9, top_k=100`
+
+为什么要比较不同解码设置？
+
+因为语言模型的生成质量不只由模型本身决定，也受采样策略影响：
+
+1. 较低 temperature 和较小 top-k 往往更保守，生成更稳定、更连贯，但可能更平淡。
+2. 较高 temperature 和较大 top-k 往往更有变化，但也更容易出现逻辑跳跃、重复和不一致。
+
+实际结果也符合这个规律：
+
+1. `temperature=0.7, top_k=40` 的样例通常更像标准五句故事，逻辑更稳。
+2. `temperature=0.9, top_k=100` 的样例更有变化，但经常出现奇怪转折或不合逻辑的句子。
+
+这一步背后的原理，是把“模型学到了什么”从抽象指标变成可读文本，从而能做简单误差分析。
+
+
+十四、总结模型的优点和错误模式
+
+从生成结果和评估结果综合来看，这个 Task 1 模型的特点是：
+
+优点：
+
+1. 基本学会了 ROCStories 的短篇叙事模板。
+2. 通常能保持五句左右的故事节奏。
+3. 在较保守的采样设置下，经常能生成有头有尾的简单因果链。
+
+常见问题：
+
+1. 容易重复关键词，比如 `umbrella`、`food`、`work`
+2. 有时句子之间连接生硬，存在逻辑跳跃
+3. 有些生成会在 `<|endoftext|>` 之后漂移到下一条故事
+4. 高温采样时更容易发生常识或情节不一致
+
+这些失败模式和当前结果 `ppl 28.89` 是一致的。也就是说，模型已经不再是“完全随机的文本模仿”，但还没有强到能稳定生成高质量短故事。
+
+
+十五、为什么额外写 `sample_params.json` 和 `task1_summary.md`
+
+除了核心训练和评估，我还补了两个交付文件：
+
+1. `out-rocstories/sample_params.json`
+2. `out-rocstories/task1_summary.md`
+
+这样做的原因如下。
+
+`sample_params.json` 的作用是保存推荐的采样参数。作业说明里提到，如果提交模型目录，可以附带一个 JSON 文件记录 sampling 参数，评估方可能会用它来做生成。这意味着把一个合理的默认采样设置和 checkpoint 放在一起，是对最终提交更友好的做法。
+
+`task1_summary.md` 的作用是把数据管线、超参数、训练过程、最终结果和误差分析先整理成一份结构化摘要。这样后续你无论是写报告、准备 Hugging Face 提交说明，还是继续扩展 Task 2，都不需要再从终端日志里重新翻信息。
+
+
+十六、最终产物和它们各自的作用
+
+整个 Task 1 完成后，主要新增或生成了这些内容：
+
+1. `data/rocstories/prepare.py`
+   作用：把 ROCStories 转成 nanoGPT 可训练的二进制 token 文件。
+
+2. `data/rocstories/train.bin`
+   作用：训练集 token 流。
+
+3. `data/rocstories/val.bin`
+   作用：本地验证集 token 流。
+
+4. `data/rocstories/dataset_stats.json`
+   作用：记录故事长度分布和 token 数统计，为超参数选择提供依据。
+
+5. `data/rocstories/test_full.txt`
+   作用：完整公开 test split 的段落文本，用于精确评估。
+
+6. `config/train_rocstories.py`
+   作用：Task 1 的正式训练配置。
+
+7. `out-rocstories/ckpt.pt`
+   作用：最终最优 checkpoint，也是实际提交最关键的模型文件。
+
+8. `out-rocstories/sample_params.json`
+   作用：推荐采样配置。
+
+9. `out-rocstories/samples.jsonl`
+   作用：批量生成样例。
+
+10. `out-rocstories/task1_summary.md`
+    作用：任务摘要，方便报告撰写和提交整理。
+
+11. `out-rocstories/task1_detailed_process.txt`
+    作用：也就是本文件，用于详细复述完整过程和原理。
+
+
+十七、最终结论
+
+这次 Task 1 的核心思路可以概括为：
+
+1. 先严格对齐作业约束，确保训练方案合规。
+2. 先补齐数据管线，而不是急着训练。
+3. 用数据统计反推合适的上下文长度。
+4. 用官方 baby GPT 规模保证参数量在 32M 以内。
+5. 通过小规模试跑和 batch 探测找到当前机器上的高效训练配置。
+6. 分阶段训练，持续观察验证曲线，而不是盲目跑满。
+7. 用完整测试集做最终精确 loss / perplexity 评估。
+8. 用不同 decoding 设置生成样例，补足定性分析。
+
+最终模型是一个完全从头训练的、29.94M 参数的 nanoGPT，在 ROCStories 公开 test split 上达到了：
+
+1. `avg_loss = 3.364`
+2. `perplexity = 28.89`
+
+从作业完成度角度看，这已经是一套完整、合规、可复现的 Task 1 结果。
