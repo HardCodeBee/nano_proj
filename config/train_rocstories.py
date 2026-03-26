@@ -36,7 +36,7 @@ weight_decay = 5e-2
 max_iters = 8000
 lr_decay_iters = 8000
 min_lr = 4e-5
-beta2 = 0.99
+beta2 = 0.995
 warmup_iters = 300
 
 # More predictable than torch.compile() for this Windows + laptop GPU environment.
