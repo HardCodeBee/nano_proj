@@ -190,6 +190,32 @@ Exact public test evaluation:
 
 This did not beat the 8k-step `min_lr = 4e-5` run, so longer training was not kept as the primary direction.
 
+## Remote Checkpoint-Selection Follow-Up
+
+After the 10k-step continuation underperformed, a smaller follow-up tested whether steadier validation estimates and a smoother AdamW second-moment setting would help checkpoint selection near the 8k-step best region.
+
+- `dropout = 0.1`
+- `learning_rate = 4e-4`
+- `weight_decay = 0.05`
+- `max_iters = 8000`
+- `lr_decay_iters = 8000`
+- `warmup_iters = 300`
+- `min_lr = 4e-5`
+- `beta2 = 0.995`
+- `eval_iters = 200`
+
+Best checkpoint metadata from the copied-back snapshot:
+
+- `iter_num = 7900`
+- `best_val_loss = 3.2935`
+
+Exact public test evaluation:
+
+- `avg_loss = 3.251`
+- `ppl = 25.83`
+
+This beat the earlier `25.86` and `25.92` remote follow-ups, but it still did not surpass the current best `25.70`.
+
 ## Updated Best Result Table
 
 - Original baseline:
@@ -204,17 +230,14 @@ This did not beat the 8k-step `min_lr = 4e-5` run, so longer training was not ke
   - `ppl = 25.70`
 - Remote 10k-step follow-up:
   - `ppl = 25.92`
+- Remote checkpoint-selection follow-up:
+  - `ppl = 25.83`
 
 The current best validated Task 1 result is now `ppl = 25.70`.
 
-## Next Planned Test
+## Checked-In Config Restored To Best State
 
-The checked-in local `config/train_rocstories.py` is now set up for the next follow-up experiment that focuses on reducing checkpoint-selection noise instead of extending training length:
-
-- `eval_iters = 200`
-- `beta2 = 0.995`
-
-The main settings stay aligned with the stronger 8k-step regime:
+The checked-in local `config/train_rocstories.py` has now been restored to the current best validated Task 1 setup:
 
 - `dropout = 0.1`
 - `learning_rate = 4e-4`
@@ -223,5 +246,7 @@ The main settings stay aligned with the stronger 8k-step regime:
 - `lr_decay_iters = 8000`
 - `warmup_iters = 300`
 - `min_lr = 4e-5`
+- `beta2 = 0.99`
+- `eval_iters = 100`
 
-This follow-up has been prepared locally but not validated yet.
+This keeps the checked-in training config aligned with the exact best public-test result of `ppl = 25.70`.

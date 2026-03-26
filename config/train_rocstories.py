@@ -1,14 +1,13 @@
 """
-This config defines the next recommended Task 1 ROCStories training setup.
+This config defines the current best validated Task 1 ROCStories training setup.
 It keeps the model at official nanoGPT baby-GPT scale so the run stays within the
-assignment's 32M parameter limit while focusing on smoother optimizer dynamics near
-the current best 25.70 PPL result.
+assignment's 32M parameter limit while matching the main hyperparameters that
+produced the current best exact public-test result of 25.70 PPL.
 """
 
 out_dir = "out-rocstories"
 eval_interval = 100
-# Use a larger sampled validation average so checkpoint selection is less noisy.
-eval_iters = 200
+eval_iters = 100
 log_interval = 10
 
 # Save only the currently best checkpoint instead of keeping every evaluation snapshot.
@@ -31,14 +30,13 @@ n_head = 6
 n_embd = 384
 dropout = 0.1
 
-# Tuned Task 1 follow-up: return to the stronger 8k-step regime, keep min_lr=4e-5,
-# and test a slightly smoother AdamW second-moment estimate.
+# Restored best validated Task 1 setup: the strongest 8k-step run with min_lr=4e-5.
 learning_rate = 4e-4
 weight_decay = 5e-2
 max_iters = 8000
 lr_decay_iters = 8000
 min_lr = 4e-5
-beta2 = 0.995
+beta2 = 0.99
 warmup_iters = 300
 
 # More predictable than torch.compile() for this Windows + laptop GPU environment.

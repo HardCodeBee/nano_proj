@@ -61,7 +61,7 @@ Based on these statistics, `block_size=128` was kept because one full story stil
 
 Checked-in next experiment note:
 
-- The current local `config/train_rocstories.py` now targets the next checkpoint-selection follow-up, with `eval_iters = 200` and `beta2 = 0.995`. This is a prepared next experiment, not the source of the current best result.
+- The current local `config/train_rocstories.py` has now been restored to the best validated Task 1 setup itself: `max_iters = 8000`, `min_lr = 4e-5`, `beta2 = 0.99`, and `eval_iters = 100`.
 
 Approximate wall-clock time:
 
@@ -80,7 +80,7 @@ Approximate wall-clock time:
 - Step 7200: val loss 3.2914
 - Step 8000: val loss 3.2865
 
-Note: the best exact public-test result now comes from the remote follow-up that changed only `min_lr` from `6e-5` to `4e-5`. A later 10k-step remote continuation did not beat it.
+Note: the best exact public-test result now comes from the remote follow-up that changed only `min_lr` from `6e-5` to `4e-5`. Later follow-ups, including a 10k-step continuation and a smoother-optimizer checkpoint-selection test, did not beat it.
 
 ## Final Quantitative Result
 
