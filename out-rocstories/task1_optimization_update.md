@@ -89,4 +89,139 @@ This second tuning round keeps the same architecture and still satisfies all cou
   - `weight_decay = 0.05`
   - `ppl = 27.09`
 
-The second tuning round is the current best Task 1 result in this workspace.
+The second tuning round was the current best local Task 1 result before the remote validation run.
+
+## Prepared R1 Follow-Up
+
+The next prepared Task 1 configuration keeps the current best main settings and changes only:
+
+- `min_lr: 6e-5 -> 4e-5`
+
+All other main hyperparameters remain:
+
+- `dropout = 0.1`
+- `learning_rate = 4e-4`
+- `weight_decay = 0.05`
+- `max_iters = 8000`
+- `lr_decay_iters = 8000`
+- `warmup_iters = 300`
+- `beta2 = 0.99`
+
+## Remote Validation Run
+
+After the local tuning rounds, the best-performing main settings were run on the rented remote GPU and evaluated exactly on the full public test text file.
+
+- Validated hyperparameters:
+  - `dropout = 0.1`
+  - `learning_rate = 4e-4`
+  - `weight_decay = 0.05`
+  - `max_iters = 8000`
+  - `lr_decay_iters = 8000`
+  - `warmup_iters = 300`
+  - `min_lr = 6e-5`
+  - `beta2 = 0.99`
+- Remote device:
+  - `NVIDIA RTX A6000`
+- Best checkpoint metadata:
+  - `iter_num = 8000`
+  - `best_val_loss = 3.2865`
+- Exact public test evaluation:
+  - `avg_loss = 3.253`
+  - `ppl = 25.86`
+
+## Current Best Task 1 Result
+
+- Original baseline:
+  - `ppl = 28.89`
+- First optimization rerun:
+  - `ppl = 27.60`
+- Second local tuning round:
+  - `ppl = 27.09`
+- Remote validated result:
+  - `ppl = 25.86`
+
+The remote validated run is now the current best Task 1 result in this workspace.
+
+## Remote `min_lr = 4e-5` Follow-Up
+
+The next remote follow-up changed only one main hyperparameter relative to the remote validated result:
+
+- `min_lr: 6e-5 -> 4e-5`
+
+All other main settings were kept the same:
+
+- `dropout = 0.1`
+- `learning_rate = 4e-4`
+- `weight_decay = 0.05`
+- `max_iters = 8000`
+- `lr_decay_iters = 8000`
+- `warmup_iters = 300`
+- `beta2 = 0.99`
+
+Exact public test evaluation on the remote follow-up:
+
+- `avg_loss = 3.247`
+- `ppl = 25.70`
+
+This became the new best validated Task 1 result.
+
+## Remote 10k-Step Follow-Up
+
+After the `min_lr = 4e-5` improvement, a longer remote continuation was tested to see whether simply extending training would help further.
+
+- `dropout = 0.1`
+- `learning_rate = 4e-4`
+- `weight_decay = 0.05`
+- `max_iters = 10000`
+- `lr_decay_iters = 10000`
+- `warmup_iters = 400`
+- `min_lr = 4e-5`
+- `beta2 = 0.99`
+
+Best checkpoint metadata from the copied-back snapshot:
+
+- `iter_num = 9700`
+- `best_val_loss = 3.2957`
+
+Exact public test evaluation:
+
+- `avg_loss = 3.255`
+- `ppl = 25.92`
+
+This did not beat the 8k-step `min_lr = 4e-5` run, so longer training was not kept as the primary direction.
+
+## Updated Best Result Table
+
+- Original baseline:
+  - `ppl = 28.89`
+- First optimization rerun:
+  - `ppl = 27.60`
+- Second local tuning round:
+  - `ppl = 27.09`
+- Remote validated result (`min_lr = 6e-5`):
+  - `ppl = 25.86`
+- Remote best result (`min_lr = 4e-5`):
+  - `ppl = 25.70`
+- Remote 10k-step follow-up:
+  - `ppl = 25.92`
+
+The current best validated Task 1 result is now `ppl = 25.70`.
+
+## Next Planned Test
+
+The checked-in local `config/train_rocstories.py` is now set up for the next follow-up experiment that focuses on reducing checkpoint-selection noise instead of extending training length:
+
+- `eval_iters = 200`
+- `beta2 = 0.995`
+
+The main settings stay aligned with the stronger 8k-step regime:
+
+- `dropout = 0.1`
+- `learning_rate = 4e-4`
+- `weight_decay = 0.05`
+- `max_iters = 8000`
+- `lr_decay_iters = 8000`
+- `warmup_iters = 300`
+- `min_lr = 4e-5`
+
+This follow-up has been prepared locally but not validated yet.
