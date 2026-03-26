@@ -1,0 +1,28 @@
+
+{
+  "dataset_id": "mintujupally/ROCStories",
+  "tokenizer": "gpt2",
+  "separator_token_id": 50256,
+  "splits": {
+    "train": {
+      "count": 78528,
+      "mean": 52.352562143439286,
+      "median": 52.0,
+      "p90": 65,
+      "p95": 69,
+      "max": 109,
+      "stories": 78528,
+      "tokens_total": 4111142
+    },
+    "val": {
+      "count": 19633,
+      "mean": 52.341007487393675,
+      "median": 52.0,
+      "p90": 65,
+      "p95": 68,
+      "max": 91,
+      "stories": 19633,
+      "tokens_total": 1027611
+    }
+  }
+}
