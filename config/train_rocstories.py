@@ -28,7 +28,7 @@ block_size = 128
 n_layer = 6
 n_head = 6
 n_embd = 384
-dropout = 0.1
+dropout = 0.05
 
 # Restored best validated 8k-step setup with the latest lower min_lr follow-up.
 learning_rate = 4e-4
