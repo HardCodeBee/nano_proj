@@ -1,0 +1,114 @@
+Mini-Project 1: NanoGPT
+COMP4680/8650 Advanced Topics in Machine Learning
+March 5, 2026
+Codebase (nanoGPT): https://github.com/karpathy/nanoGPT
+Dataset (ROCStories): https://huggingface.co/datasets/mintujupally/ROCStories
+Overview
+You will train a small language model for story generation using nanoGPT. The assignment has four parts: a warm-up (not graded), training on ROCStories, and explorations.
+Additionally, there will be an optional a story-generation competition.
+Warm-up: Setup and First Run (0 points)
+This part is not graded. Its goal is to make sure you can set up the environment and
+understand the nanoGPT code structure.
+• Follow the official nanoGPT README to install dependencies and verify your environment.
+• Run a provided/official training or sampling command from nanoGPT to confirm your
+setup works end-to-end.
+• Try the provided eval.py script to evaluate a checkpoint and get a basic sense of
+model quality.
+• Write down brief notes (for yourself) about: code structure, where the dataset is
+prepared, where training happens, and how sampling is done.
+1
+Task 1: Train nanoGPT on ROCStories (7 points)
+Train your own nanoGPT model on the ROCStories training set. You may use the
+ROCStories test set for local evaluation and model selection. We will use our own
+held-out data for final grading, so please avoid overfitting to the public test set.
+Requirements
+(i) Data processing: Convert ROCStories into a training corpus suitable for nanoGPT
+(e.g., plain text) and document the preprocessing you used (tokenization, special tokens, concatenation strategy, story separators, etc.).
+(ii) Training: Train a model from scratch. You must report your key hyperparameters
+(model size, context length, batch size, learning rate schedule, number of steps/epochs,
+seed, etc.).
+(iii) Evaluation: Evaluate your model on the ROCStories test split using at least one
+quantitative metric (e.g., loss/perplexity) and include qualitative samples.
+Note that Task 1 is a basic one. It means that you do not have to make improvements
+on data or architecture. We suggest to place your improvement in Task 2, where you can
+continue working on story generation and/or try other tasks. But if you would like to make
+fancy stuff in Task 1, it will also be welcomed (but no additional marks).
+Task 2: Exploration (8 points)
+This task is open-ended. The goal is to encourage exploration beyond the base setup. You
+can try different datasets or model variants. Possible directions include:
+• Dataset ideas: Q&A, dialogue, or structured text such as recipes and instructions.
+• Model ideas: Alternative model architectures (e.g., LLaMA-style blocks).
+• Example idea: Try a dataset of SVG icons or simple vector drawings and train the
+model to generate SVG code (e.g., basic shapes, logos, or glyphs).
+Please include what you tried, why you chose it, and a short summary of what worked or
+did not work in the Task 1 report.
+We will score this task based on the originality of the exploration, the clarity of your
+write-up, and whether your findings are supported by evidence (e.g., metrics or sample
+outputs).
+2
+Report
+Your report should summarize Task 1 and Task 2. It should clearly describe:
+• Your data pipeline and any cleaning decisions.
+• Training setup and compute budget (hardware and approximate training time).
+• Learning curves (training/validation loss) and what you learned from these curves.
+• Test-set evaluation results (numerical) and a brief error analysis (common failure
+modes).
+• Generated samples under different decoding settings (e.g., temperature/top-k), with a
+short discussion.
+• You may choose to put only a few generated samples in the main report and leave the
+other samples to the Appendix, which comes after references.
+• The main report should be no longer than 2 pages, excluding references. That is, references can come after the 2 pages. There is no page limit for references and Appendix
+that comes afterwards. Do not expect we read the Appendix carefully, so don’t put
+important things there, perhaps only some generation samples.
+
+Marking Criteria
+Task 1 will be assessed holistically across the following components:
+• (2 mark) Pipeline correctness (data + training): Whether the dataset is processed
+correctly, the training setup is sound, and the system runs end-to-end as described.
+• (1 marks) Experimental rigor: Clear hyperparameter reporting, sensible baselines/ablation
+choices (if any).
+• (2 marks) Test performance: Quantitative metrics and qualitative story samples.
+• (2 marks) Writing clarity: A well-structured, concise, and readable report with
+enough details to follow your methodology and results. You should use plain English
+and plain grammar. Over-length reports will be penalized by 1-2 marks, depending on
+the extent. 1-2 marks will be deducted if any sentence is GPT written/polished but
+not declared.
+3
+Task 2 will be assessed based on the following aspects:
+• (3 marks) Novelty/usefulness. Full mark if your idea is completely novel and hasn’t
+been proposed before. Full mark if your method is demonstrated to be very useful
+across different tasks. Full mark if you can spot interesting insights from new datasets
+or new architectures. Only 1 mark will be awarded if only switching a dataset or
+architecture.
+• (3 marks) Comprehensive trials. Full mark if your experiments are comprehensive
+and sensible. Important details of your experiments should be discussed. Evidences
+and results should be summarized. Missing important experiment will have mark
+deducted.
+• (2 marks) Writing clarify. Same as Task 1.
+Task 3: (15 marks) Submit your best checkpoint for story generation
+We will use our private test prompts to evaluate your model. We will use a combination of
+PPL and Qwen scores for evaluation. Submission method can be seen in the last section of
+this document.
+Marking criteria: Your mark will be based on 1) whether you achieved a basic PPL value
+(to be published, but would be around 20) and 2) your ranking in the class.
+Additional Task 4: Story Generation Competition (optional, 2 extra points)
+We will hold lab competitions to compare models by story quality. Note that you can
+continue improving your model until the day before your lab.
+• By the day before your Week 6 lab, you can choose to submit your trained checkpoint(s)
+and a short description of your best configuration (data and model).
+• We will provide prompts; your model will generate stories based on these prompts for
+a head-to-head comparison.
+• We will evaluate all submissions with human judgment (e.g., student voting), focusing
+on coherence, creativity, consistency, and grammar.
+• The winner student will have 2 extra marks for this course (total mark capped at 100).
+4
+Submission and Upload
+Use hf load.py to upload your model folder to Hugging Face (<username>/nanoGPT hw).
+• Keep ckpt.pt in the model folder; we will use it for evaluation. Make sure the repository contains only the final checkpoint (no intermediate results).
+• Include the model.py or other necessary files if you modify architecture.
+• You may include a JSON file that records your sampling parameters for generation.
+We will load it with sample params = json.load(f) and use it for sampling (not for
+PPL evaluation).
+• Under ‘Mini-Project 1’ on Canvas, enter your repo information to the ‘Text’ field. Type
+your <username>/nanoGPT hw and your Hugging Face auth token in two different rows.
+5

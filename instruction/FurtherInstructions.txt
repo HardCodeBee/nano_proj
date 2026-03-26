@@ -1,0 +1,13 @@
+I had many discussions with students and received useful feedback. Please see our revised instruction. 
+
+The baseline should follows the official nanoGPT configuration: https://github.com/karpathy/nanoGPT/blob/master/config/train_shakespeare_char.py. This corresponds to the default “baby GPT model”, with parameters n_layer = 6, n_head = 6, and n_embd = 384.
+
+It is not allowed to fine-tune existing pre-trained models. You can do pre-training yourself if you would like to do so. In other words, all the model parameters should be trained by yourself.  
+
+Model size. Students have access to different levels of computational resources. For fairness, we impose a constraint on model size: the total number of parameters must not exceed 32M. As a reference, the baseline model (baby GPT model) approximately has 30.2M parameters and 340MB in physical size. Your submitted model should be within a similar scale.
+
+The above 32M constraint applies to Task 1, Task 2, including the model you submit to HuggingFace. In other words, do not evaluate model size beyond 32M in Task 2. 
+
+We encourage you to think carefully about architecture choices, training strategies, and data processing, and to explore ideas that improve performance in a principled and efficient way.
+
+For those who are interested in experimenting with larger models, you are welcome to do so. In LLM arena, you can submit larger models (but it has to be completely trained by you, not from external pre-trained models). 
