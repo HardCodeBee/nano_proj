@@ -6,7 +6,7 @@ produced the current best remote exact public-test result of 25.70 PPL.
 """
 
 out_dir = "out-rocstories"
-eval_interval = 100
+eval_interval = 200
 eval_iters = 100
 log_interval = 10
 
