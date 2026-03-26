@@ -35,7 +35,7 @@ learning_rate = 4e-4
 weight_decay = 5e-2
 max_iters = 8000
 lr_decay_iters = 8000
-min_lr = 4e-5
+min_lr = 3e-5
 beta2 = 0.99
 warmup_iters = 300
 
