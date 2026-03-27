@@ -9,6 +9,9 @@ This text file mainly documents the original Task 1 baseline run.
 For the synchronized optimization rerun with `dropout=0.1`, `max_iters=12000`, and the refreshed
 final metrics (`avg_loss=3.318`, `ppl=27.60`), see `out-rocstories/task1_summary.md` and
 `out-rocstories/task1_optimization_update.md`.
+The current best synchronized Task 1 result is the later remote `r6` follow-up with
+`avg_loss=3.242` and `ppl=25.57`; the up-to-date best setup and experiment chain are also
+tracked in those two files.
 
 Task 1 详细流程复述：在 ROCStories 上从头训练 nanoGPT
 

@@ -32,7 +32,7 @@ dropout = 0.1
 
 # Restored best validated 8k-step setup with the latest lower min_lr follow-up.
 learning_rate = 4e-4
-weight_decay = 3e-2
+weight_decay = 5e-2
 max_iters = 8000
 lr_decay_iters = 8000
 min_lr = 1e-5
