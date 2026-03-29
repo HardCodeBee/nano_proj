@@ -4,6 +4,9 @@
 
 This is the current practical conclusion after running the main Task 2 branches.
 
+For the detailed experiment record, see
+[task2_experiments.md](C:/Users/12442/Desktop/GitHub/nano_proj/out-task2/task2_experiments.md).
+
 ## What is stable
 
 - Task 1 historical best remains valid:
