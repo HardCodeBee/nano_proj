@@ -185,3 +185,10 @@ Improvement from the older `r6` best 128-token baseline:
 - `seed = 2027`
 
 This keeps the default local ROCStories config aligned with the strongest checked-in public-test result while preserving the older configs as historical milestones.
+
+For submission-facing documentation inside the repo, pair this file with:
+
+- `data/rocstories/prepare.py`
+- `config/train_rocstories.py`
+- `out-rocstories/sample_params.json`
+- `out-rocstories/task1_summary.md`

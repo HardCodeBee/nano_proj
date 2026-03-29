@@ -44,6 +44,22 @@ Why the later runs switched from `block_size = 128` to `block_size = 96`:
 
 This stays safely within the assignment's `32M` cap.
 
+## Reproduction Commands
+
+Standard local command chain:
+
+- `python data/rocstories/prepare.py`
+- `python train.py config/train_rocstories.py`
+- `python eval.py --init_from=resume --out_dir=out-rocstories --input_file=data/rocstories/test_full.txt --print_first_n=0`
+- `python sample.py --init_from=resume --out_dir=out-rocstories --start="Emily forgot her umbrella before leaving for work." --temperature=0.7 --top_k=40`
+
+What these commands produce:
+
+- `prepare.py` writes `train.bin`, `val.bin`, `dataset_stats.json`, and `test_full.txt`
+- `train.py` uses `config/train_rocstories.py` as the coursework-aligned default local Task 1 recipe
+- `eval.py` reads the blank-line-separated `test_full.txt` file without changing the course evaluation pipeline
+- `sample.py` uses the same checkpoint format as the grader-facing workflow
+
 ## Current Best Validated Setup
 
 Winning run:
@@ -83,6 +99,12 @@ Exact public test evaluation using `eval.py`:
 - Predicted tokens: `988,345`
 - Average loss: `3.216`
 - Perplexity: `24.93`
+
+## Compute Budget Note
+
+- Training environment used for the local Task 1 work: single `NVIDIA GeForce RTX 4060 Laptop GPU`
+- `compile = False` was kept for stability on the local Windows environment
+- The `r19` training log shows steady-state training iterations around `42-43 ms/iter`; exact end-to-end wall-clock varies because validation runs every `25` steps and the log does not record timestamps for each evaluation block
 
 ## Improvement Timeline
 
@@ -149,12 +171,19 @@ Common failure modes:
 - Higher-temperature decoding noticeably increases grammar slips and logic jumps.
 - If generation is not truncated at `<|endoftext|>`, the model may continue into a second story.
 
-## Current Canonical Files
+## Submission-Facing Files
+
+Tracked files that should be cited in a submission-oriented repo write-up:
 
 - Default synced training config: `config/train_rocstories.py`
-- Best push config family: `config/train_rocstories_task1_push_v7.py`
-- Current best checkpoint: `out-rocstories-remote-r19/`
-- Current best sampling defaults: `out-rocstories-remote-r19/sample_params.json`
-- Historical 128-token milestone config: `config/train_rocstories_r6_best.py`
+- Data preparation script: `data/rocstories/prepare.py`
+- Sampling defaults kept under version control: `out-rocstories/sample_params.json`
+- Main Task 1 summary: `out-rocstories/task1_summary.md`
 - Optimization log: `out-rocstories/task1_optimization_update.md`
 - Historical process notebook: `out-rocstories/task1_detailed_process.txt`
+
+Important distinction:
+
+- The best documented local public-test run is still `out-rocstories-remote-r19/`
+- That run directory contains generated artifacts such as `ckpt.pt`, `train.log`, and `sample_params.json`
+- Those large/generated files are intentionally gitignored so the repository stays close to the original nanoGPT structure

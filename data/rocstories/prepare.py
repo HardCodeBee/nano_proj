@@ -1,6 +1,10 @@
 """
-This script converts ROCStories into the binary token streams.
-It creates train.bin / val.bin and writes dataset_stats.json for later inspection.
+Convert ROCStories into nanoGPT-ready local artifacts.
+
+Outputs:
+- train.bin / val.bin: uint16 GPT-2 token streams for nanoGPT training
+- dataset_stats.json: split-level token-length statistics
+- test_full.txt: blank-line-separated validation stories for exact paragraph eval
 
 Processing:
 Each story is tokenized with the GPT-2 BPE tokenizer, then an end-of-text token is
@@ -8,7 +12,6 @@ appended so the model can know where one story stops and the next one begins.
 """
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +45,13 @@ def summarize_lengths(lengths):
         "p95": int(np.percentile(arr, 95)),
         "max": int(arr.max()),
     }
+
+
+def write_eval_text(path, stories):
+    # eval.py expects paragraphs separated by blank lines in the .txt mode.
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n\n".join(story.strip() for story in stories if story.strip()))
+        f.write("\n")
 
 
 if __name__ == "__main__":
@@ -102,6 +112,10 @@ if __name__ == "__main__":
             f"{split}.bin: {split_stats['tokens_total']:,} tokens, "
             f"mean/story={split_stats['mean']:.2f}, p95={split_stats['p95']}"
         )
+
+    eval_text_path = out_dir / "test_full.txt"
+    write_eval_text(eval_text_path, dataset["val"][TEXT_KEY])
+    print(f"Saved evaluation text to {eval_text_path}")
 
     stats_path = out_dir / "dataset_stats.json"
     with open(stats_path, "w", encoding="utf-8") as f:
