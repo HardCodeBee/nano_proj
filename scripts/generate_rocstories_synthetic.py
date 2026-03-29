@@ -1,5 +1,5 @@
 """
-Generate ROCStories-style synthetic stories from a source narrative dataset using an
+Generate prompt-aligned short synthetic stories from a source narrative dataset using an
 OpenAI-compatible API.
 
 Typical usage (bash):
@@ -39,7 +39,7 @@ ENC = tiktoken.get_encoding("gpt2")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate ROCStories-style synthetic stories.")
+    parser = argparse.ArgumentParser(description="Generate prompt-aligned synthetic short stories.")
     parser.add_argument("--api-key", default=os.getenv("OPENAI_API_KEY"))
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--model", default=DEFAULT_MODEL)
@@ -89,6 +89,24 @@ def split_sentences(text: str) -> list[str]:
     return [segment.strip() for segment in re.split(r"(?<=[.!?])\s+", normalized) if segment.strip()]
 
 
+def extract_opening_sentence(text: str) -> str:
+    sentences = split_sentences(text)
+    return sentences[0] if sentences else ""
+
+
+def content_word_overlap(a: str, b: str) -> float:
+    stopwords = {
+        "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "had", "has",
+        "have", "he", "her", "his", "i", "in", "into", "is", "it", "its", "of", "on", "or",
+        "she", "that", "the", "their", "there", "they", "to", "was", "were", "with", "you",
+    }
+    a_tokens = {tok for tok in re.findall(r"[A-Za-z']+", a.lower()) if tok not in stopwords}
+    b_tokens = {tok for tok in re.findall(r"[A-Za-z']+", b.lower()) if tok not in stopwords}
+    if not a_tokens:
+        return 0.0
+    return len(a_tokens & b_tokens) / len(a_tokens)
+
+
 def has_repeated_4gram(text: str) -> bool:
     tokens = re.findall(r"[A-Za-z']+", text.lower())
     if len(tokens) < 8:
@@ -102,7 +120,7 @@ def has_repeated_4gram(text: str) -> bool:
     return False
 
 
-def validate_story(story: str) -> tuple[bool, str, int, int]:
+def validate_story(story: str, source_opening: str) -> tuple[bool, str, int, int]:
     normalized = " ".join(story.split()).strip()
     sentences = split_sentences(normalized)
     token_count = len(ENC.encode_ordinary(normalized))
@@ -114,11 +132,15 @@ def validate_story(story: str) -> tuple[bool, str, int, int]:
         return False, "quote_heavy_output", len(sentences), token_count
     if has_repeated_4gram(normalized):
         return False, "repeated_4gram", len(sentences), token_count
+    first_sentence_overlap = content_word_overlap(source_opening, sentences[0])
+    if first_sentence_overlap < 0.25:
+        return False, f"opening_alignment_too_low_{first_sentence_overlap:.2f}", len(sentences), token_count
     return True, "accepted", len(sentences), token_count
 
 
 def generate_one_story(
     source_story: str,
+    source_opening: str,
     system_prompt: str,
     model_name: str,
     base_url: str,
@@ -133,7 +155,13 @@ def generate_one_story(
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": source_story},
+            {
+                "role": "user",
+                "content": (
+                    f"Opening sentence:\n{source_opening}\n\n"
+                    f"Full source story:\n{source_story}"
+                ),
+            },
         ],
     }
     request_body = json.dumps(payload).encode("utf-8")
@@ -223,10 +251,14 @@ def main() -> None:
         if not source_text:
             continue
         source_text = source_text[: args.max_source_chars]
+        source_opening = extract_opening_sentence(source_text)
+        if not source_opening:
+            continue
 
         try:
             synthetic_story = generate_one_story(
                 source_story=source_text,
+                source_opening=source_opening,
                 system_prompt=prompt_text,
                 model_name=args.model,
                 base_url=args.base_url,
@@ -235,9 +267,10 @@ def main() -> None:
                 timeout=args.timeout,
                 max_retries=args.max_retries,
             )
-            accepted, reason, sentence_count, token_count = validate_story(synthetic_story)
+            accepted, reason, sentence_count, token_count = validate_story(synthetic_story, source_opening)
             record = {
                 "source_index": source_index,
+                "source_opening": source_opening,
                 "source_story": source_text,
                 "story": synthetic_story,
                 "accepted": accepted,
@@ -255,6 +288,7 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             record = {
                 "source_index": source_index,
+                "source_opening": source_opening,
                 "source_story": source_text,
                 "story": "",
                 "accepted": False,

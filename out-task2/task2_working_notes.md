@@ -200,7 +200,7 @@ The next aggressive branch is:
 Why:
 
 - E1 and E2 improved token-level fit, but did not create a clear jump in judged story quality
-- a stronger model can generate short synthetic stories that are closer to the exact style we want
+- a stronger model can generate short synthetic stories that stay much closer to the opening prompt we want the small model to follow
 - this keeps the task fully focused on story generation while being more novel than another small sampler tweak
 - it is more likely to produce a story-quality jump than RLHF/DPO under the current time and compute constraints
 
