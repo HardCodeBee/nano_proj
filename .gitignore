@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 
 data/rocstories/*.bin
+data/rocstories/*_story_starts.npy
+data/rocstories/*_story_lengths.npy
 data/rocstories/test_full.txt
 data/rocstories/val_full.txt
 data/rocstories/locked_test.txt
@@ -22,5 +24,6 @@ archive/task1/run_history/
 out-task2/eval_logs/
 out-task2/samples/
 out-task2/results.csv
+out-task2-1/
 
 PROJECT_STRUCTURE_TUTORIAL.md

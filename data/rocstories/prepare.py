@@ -3,6 +3,8 @@ Convert ROCStories into nanoGPT-ready local artifacts with a three-layer split:
 
 - train.bin: official train minus a small held-out validation slice
 - val.bin: held-out slice from the official train split, used for checkpoint selection
+- train_story_starts.npy / train_story_lengths.npy: story boundary metadata for story-aware sampling
+- val_story_starts.npy / val_story_lengths.npy: validation metadata in the same format
 - val_full.txt: blank-line-separated validation stories for day-to-day paragraph eval
 - locked_test.txt: the untouched official public test split, reserved for occasional final checks
 - dataset_stats.json: split-level token-length statistics and split metadata
@@ -119,6 +121,8 @@ if __name__ == "__main__":
         split_stats["stories"] = len(tokenized_split)
         split_stats["tokens_total"] = int(np.sum(tokenized_split["len"], dtype=np.uint64))
         stats["splits"][split] = split_stats
+        lengths = np.array(tokenized_split["len"], dtype=np.int64)
+        starts = np.cumsum(np.concatenate(([0], lengths[:-1])), dtype=np.int64)
 
         filename = out_dir / f"{split}.bin"
         arr_len = split_stats["tokens_total"]
@@ -137,10 +141,16 @@ if __name__ == "__main__":
             idx += len(arr_batch)
         arr.flush()
 
+        starts_path = out_dir / f"{split}_story_starts.npy"
+        lengths_path = out_dir / f"{split}_story_lengths.npy"
+        np.save(starts_path, starts)
+        np.save(lengths_path, lengths)
+
         print(
             f"{split}.bin: {split_stats['tokens_total']:,} tokens, "
             f"mean/story={split_stats['mean']:.2f}, p95={split_stats['p95']}"
         )
+        print(f"Saved story metadata to {starts_path.name} and {lengths_path.name}")
 
     locked_test_tokenized = locked_test.map(
         process,

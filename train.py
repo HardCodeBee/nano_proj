@@ -38,7 +38,8 @@ log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
-init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
+init_from = 'scratch' # 'scratch' or 'resume' or 'resume_path' or 'gpt2*'
+resume_ckpt_path = '' # used only when init_from='resume_path'
 # wandb logging
 wandb_log = False # disabled by default
 wandb_project = 'owt'
@@ -48,6 +49,9 @@ dataset = 'openwebtext'
 gradient_accumulation_steps = 1
 batch_size = 64
 block_size = 256 # context of up to 256 previous characters
+sampling_mode = 'random' # random, story_start, opening_biased, mixed
+story_sampling_prob = 0.7 # for mixed mode: probability of drawing story-aware windows
+opening_window_tokens = 24 # max offset from a story start for opening-biased sampling
 # model
 n_layer = 12
 n_head = 12
@@ -101,6 +105,8 @@ else:
     ddp_world_size = 1
 tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
 print(f"tokens per iteration will be: {tokens_per_iter:,}")
+if master_process:
+    print(f"train sampling mode: {sampling_mode}")
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
@@ -115,6 +121,84 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # poor man's data loader
 data_dir = os.path.join('data', dataset)
+story_metadata_cache = {}
+story_sampling_warning_printed = False
+
+
+def load_story_metadata(split):
+    global story_sampling_warning_printed
+    cache_key = (data_dir, split)
+    if cache_key in story_metadata_cache:
+        return story_metadata_cache[cache_key]
+
+    starts_path = os.path.join(data_dir, f'{split}_story_starts.npy')
+    lengths_path = os.path.join(data_dir, f'{split}_story_lengths.npy')
+    if not (os.path.exists(starts_path) and os.path.exists(lengths_path)):
+        if sampling_mode != 'random' and split == 'train' and master_process and not story_sampling_warning_printed:
+            print(
+                f"story-aware sampling requested, but metadata is missing for split '{split}'. "
+                "Falling back to random stream sampling."
+            )
+            story_sampling_warning_printed = True
+        story_metadata_cache[cache_key] = None
+        return None
+
+    starts = np.load(starts_path).astype(np.int64, copy=False)
+    lengths = np.load(lengths_path).astype(np.int64, copy=False)
+    story_metadata_cache[cache_key] = {'starts': starts, 'lengths': lengths}
+    return story_metadata_cache[cache_key]
+
+
+def sample_random_indices(num_samples, data_length):
+    return np.random.randint(0, data_length - block_size, size=num_samples).astype(np.int64)
+
+
+def sample_story_indices(num_samples, data_length, split, mode):
+    metadata = load_story_metadata(split)
+    if metadata is None:
+        return sample_random_indices(num_samples, data_length)
+
+    valid_limit = data_length - block_size
+    valid_mask = metadata['starts'] < valid_limit
+    starts = metadata['starts'][valid_mask]
+    lengths = metadata['lengths'][valid_mask]
+    if len(starts) == 0:
+        return sample_random_indices(num_samples, data_length)
+
+    chosen = np.random.randint(0, len(starts), size=num_samples).astype(np.int64)
+    chosen_starts = starts[chosen]
+    if mode == 'story_start':
+        return chosen_starts
+
+    if mode == 'opening_biased':
+        max_offsets = np.minimum(np.maximum(lengths[chosen] - 2, 0), opening_window_tokens)
+        offsets = np.array(
+            [np.random.randint(0, offset + 1) if offset > 0 else 0 for offset in max_offsets],
+            dtype=np.int64,
+        )
+        return chosen_starts + offsets
+
+    return sample_random_indices(num_samples, data_length)
+
+
+def choose_start_indices(split, data_length):
+    if split != 'train' or sampling_mode == 'random':
+        return sample_random_indices(batch_size, data_length)
+
+    if sampling_mode in ('story_start', 'opening_biased'):
+        return sample_story_indices(batch_size, data_length, split, sampling_mode)
+
+    if sampling_mode == 'mixed':
+        use_story = np.random.rand(batch_size) < story_sampling_prob
+        ix = sample_random_indices(batch_size, data_length)
+        story_count = int(use_story.sum())
+        if story_count > 0:
+            ix[use_story] = sample_story_indices(story_count, data_length, split, 'opening_biased')
+        return ix
+
+    raise ValueError(f"Unknown sampling_mode: {sampling_mode}")
+
+
 def get_batch(split):
     # We recreate np.memmap every batch to avoid a memory leak, as per
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
@@ -122,7 +206,7 @@ def get_batch(split):
         data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     else:
         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-    ix = torch.randint(len(data) - block_size, (batch_size,))
+    ix = choose_start_indices(split, len(data))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
@@ -157,10 +241,12 @@ if init_from == 'scratch':
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
-elif init_from == 'resume':
-    print(f"Resuming training from {out_dir}")
+elif init_from in ('resume', 'resume_path'):
+    ckpt_path = os.path.join(out_dir, 'ckpt.pt') if init_from == 'resume' else resume_ckpt_path
+    if not ckpt_path:
+        raise ValueError("resume_ckpt_path must be set when init_from='resume_path'")
+    print(f"Resuming training from {ckpt_path}")
     # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
@@ -199,7 +285,7 @@ scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
 
 # optimizer
 optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
-if init_from == 'resume':
+if init_from in ('resume', 'resume_path'):
     optimizer.load_state_dict(checkpoint['optimizer'])
 checkpoint = None # free up memory
 
