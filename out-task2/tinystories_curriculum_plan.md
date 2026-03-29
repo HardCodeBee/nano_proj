@@ -47,6 +47,24 @@ Compare E1 against the frozen baseline:
 - Daily metrics: `ROC val` `avg_loss`, `ppl`, fixed-prompt samples, and automatic judge score
 - Locked local check: `ROC locked_test` only for shortlisted checkpoints
 
+## Current confirmed E1 result
+
+Under the new Task 2 daily protocol (`ROC val`):
+
+- run name: `e1-tinystories-to-rocstories`
+- `avg_loss = 3.181`
+- `ppl = 24.07`
+- OpenAI-judge proxy mean score: `2.0`
+- repetition failures: `1`
+- truncation failures: `0`
+- prompt drift failures: `0`
+
+Interpretation:
+
+- E1 is a valid Task 2 result under the new split policy
+- the curriculum direction works technically and gives a usable ROCStories-domain checkpoint
+- story quality is still limited by semantic jumps and weak naturalness, so E1 is a stepping stone rather than the final answer
+
 ## Commands
 
 ### Prepare TinyStories subset

@@ -117,6 +117,32 @@ Interpretation:
 - the model is clearly no longer a TinyStories-only checkpoint
 - the generated stories still show semantic jumps and weak realism, so the direction is promising but not yet final
 
+### E2: story-aware ROCStories polish
+
+Configs and code path:
+
+- sampler logic: [train.py](C:/Users/12442/Desktop/GitHub/nano_proj/train.py)
+- ROCStories metadata export: [prepare.py](C:/Users/12442/Desktop/GitHub/nano_proj/data/rocstories/prepare.py)
+- polish config: [train_rocstories_task2_e2_storyaware_polish.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_task2_e2_storyaware_polish.py)
+
+Current confirmed result under the new protocol:
+
+- run name: `e2-storyaware-polish-openai`
+- eval input: `ROC val`
+- `avg_loss = 3.176`
+- `ppl = 23.95`
+- OpenAI-judge proxy mean score: `2.0`
+- repetition failures: `2`
+- truncation failures: `0`
+- prompt drift failures: `0`
+
+Interpretation:
+
+- E2 is a small but real token-level improvement over E1
+- the automatic judge score did not improve
+- some local stories are slightly cleaner, but overall story quality is still mostly in the same band
+- E2 should be treated as the current best daily ROC-val checkpoint, but not yet as a decisive final model
+
 ## 5. Important comparability caveat
 
 The old `r19` checkpoint was trained before the new Task 2 split protocol existed.
@@ -139,6 +165,7 @@ For the report:
 - the TinyStories -> ROCStories curriculum is technically feasible in the current codebase
 - Stage 2 resume into ROCStories works after forcing checkpoint saving
 - the fixed evaluation runner gives consistent metrics and sample outputs
+- story-aware ROCStories polish gave a small but positive ROC-val improvement over E1
 
 ### Did not work / issues encountered
 
@@ -146,6 +173,7 @@ For the report:
 - the first Stage 2 run failed to overwrite the Stage 1 checkpoint because `always_save_checkpoint` was false
 - a locally copied E1 `ckpt.pt` became unreadable, so large checkpoint transfer should not be relied on for daily work
 - the historical `r19` checkpoint cannot be fairly compared on the new `ROC val`
+- the first story-aware polish run improved `ppl` only slightly and did not improve the automatic judge score
 
 ## 7. Failure modes observed so far
 
@@ -154,6 +182,7 @@ From the current fixed-prompt samples:
 - occasional repetitive phrasing
 - semantic drift inside the middle of the story
 - endings are less abrupt than the TinyStories-only model, but still not consistently natural
+- story-aware polish slightly cleaned a few prompts, but many samples remain bland or loosely connected
 
 These failure modes still match the rubric concerns:
 
@@ -164,23 +193,25 @@ These failure modes still match the rubric concerns:
 
 ## 8. Next high-value experiment
 
-The most promising next move is not RLHF or architecture replacement.
-The current best next experiment is:
+The next aggressive branch is:
 
-`E1 + story-aware ROCStories sampling + short low-learning-rate ROC polish`
+`E3 = synthetic ROC-style distillation + final ROCStories polish`
 
 Why:
 
-- it keeps the currently promising curriculum direction
-- it directly targets the mismatch between random token-window training and story-level generation
-- it is more likely to help both `ppl` and judged story quality than a high-risk post-training method
+- E1 and E2 improved token-level fit, but did not create a clear jump in judged story quality
+- a stronger model can generate short synthetic stories that are closer to the exact style we want
+- this keeps the task fully focused on story generation while being more novel than another small sampler tweak
+- it is more likely to produce a story-quality jump than RLHF/DPO under the current time and compute constraints
 
 Implementation files:
 
-- [train.py](C:/Users/12442/Desktop/GitHub/nano_proj/train.py)
-- [prepare.py](C:/Users/12442/Desktop/GitHub/nano_proj/data/rocstories/prepare.py)
-- [train_rocstories_task2_e2_storyaware_polish.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_task2_e2_storyaware_polish.py)
-- [storyaware_polish_plan.md](C:/Users/12442/Desktop/GitHub/nano_proj/out-task2/storyaware_polish_plan.md)
+- [generate_rocstories_synthetic.py](C:/Users/12442/Desktop/GitHub/nano_proj/scripts/generate_rocstories_synthetic.py)
+- [task2_rocstyle_rewrite_prompt.txt](C:/Users/12442/Desktop/GitHub/nano_proj/prompts/task2_rocstyle_rewrite_prompt.txt)
+- [prepare.py](C:/Users/12442/Desktop/GitHub/nano_proj/data/rocstories_synth/prepare.py)
+- [train_rocstories_synth_task2_e3_stage1.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_synth_task2_e3_stage1.py)
+- [train_rocstories_task2_e3_stage2.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_task2_e3_stage2.py)
+- [e3_synthetic_distillation_plan.md](C:/Users/12442/Desktop/GitHub/nano_proj/out-task2/e3_synthetic_distillation_plan.md)
 
 ## 9. Report writing checklist
 
@@ -189,8 +220,10 @@ The final report should be able to pull directly from the following items:
 - motivation for TinyStories curriculum
 - ROCStories split policy and evaluation protocol
 - E1 configuration summary
+- E2 story-aware polish summary
+- E3 synthetic-distillation plan and rationale
 - historical `r19` Task 1 reference
-- current E1 daily ROC-val result
+- current E1 and E2 daily ROC-val results
 - short error analysis from fixed-prompt outputs
 - explicit caveat that old `r19` on new `ROC val` is not a fair comparison
 

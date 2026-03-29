@@ -86,3 +86,30 @@ Compared with the current E1 result, look for:
 - lower `ROC val` `avg_loss` / `ppl`
 - fewer repetitive or semantically drifting samples
 - higher local automatic-judge score if available
+
+## Current outcome
+
+The first E2 run has already been completed.
+
+Confirmed result:
+
+- run name: `e2-storyaware-polish-openai`
+- eval input: `ROC val`
+- `avg_loss = 3.176`
+- `ppl = 23.95`
+- OpenAI-judge proxy mean score: `2.0`
+- repetition failures: `2`
+- truncation failures: `0`
+- prompt drift failures: `0`
+
+Comparison against E1:
+
+- token-level fit improved slightly (`24.07 -> 23.95` ppl)
+- automatic judge score did not improve (`2.0 -> 2.0`)
+- repetition failures increased slightly (`1 -> 2`)
+
+Interpretation:
+
+- story-aware polish is a positive but modest improvement
+- it is worth keeping as the current best daily ROC-val checkpoint
+- the gain is not yet large enough to claim a clear story-quality breakthrough

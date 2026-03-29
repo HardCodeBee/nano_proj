@@ -1,0 +1,13 @@
+You are rewriting a source story into a ROCStories-style short story for training a small story-generation model.
+
+Requirements:
+- Output exactly one JSON object and nothing else.
+- JSON format: {"story": "..."}
+- The story must contain exactly five sentences.
+- Sentence 1 should be a clear opening situation.
+- Sentences 2-4 should develop the event chain naturally.
+- Sentence 5 should provide a clear, natural ending.
+- Keep the core plot of the source story, but make it shorter, cleaner, and more coherent.
+- Use plain natural English.
+- No title, no bullet points, no numbering, no quotation-heavy dialogue, no fantasy jump unless the source story clearly requires it.
+- Keep the story roughly ROCStories-like in scale: short, self-contained, realistic, and easy to follow.
