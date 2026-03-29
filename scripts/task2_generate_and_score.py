@@ -36,6 +36,9 @@ import tiktoken
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 DEFAULT_PROMPTS_FILE = PROJECT_ROOT / "prompts" / "task2_eval_prompts.txt"
 DEFAULT_QWEN_PROMPT_FILE = PROJECT_ROOT / "instruction" / "Qwen_scoring_prompt tha.txt"
 DEFAULT_RESULTS_CSV = PROJECT_ROOT / "out-task2" / "results.csv"
@@ -114,8 +117,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--qwen-api-key",
-        default=os.getenv("QWEN_API_KEY"),
-        help="API key. Defaults to QWEN_API_KEY env var.",
+        default=os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
+        help="API key. Defaults to QWEN_API_KEY or DASHSCOPE_API_KEY env var.",
     )
     parser.add_argument("--qwen-timeout", type=int, default=60)
     parser.add_argument("--qwen-max-retries", type=int, default=3)
@@ -183,7 +186,7 @@ def score_story_with_qwen(
             {"role": "user", "content": story},
         ],
     }
-    body = json.dumps(payload).encode("utf-8")
+    request_body = json.dumps(payload).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -191,7 +194,7 @@ def score_story_with_qwen(
 
     last_error = None
     for attempt in range(1, max_retries + 1):
-        request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        request = urllib.request.Request(url, data=request_body, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read().decode("utf-8")
@@ -203,6 +206,12 @@ def score_story_with_qwen(
             if score < 1 or score > 5:
                 raise ValueError(f"Qwen score out of range: {score}")
             return {"score": score, "reason": reason}
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")
+            last_error = RuntimeError(f"HTTP {exc.code}: {error_body}")
+            if attempt == max_retries:
+                break
+            time.sleep(min(2 ** (attempt - 1), 4))
         except (KeyError, ValueError, json.JSONDecodeError, urllib.error.URLError) as exc:
             last_error = exc
             if attempt == max_retries:
@@ -405,9 +414,8 @@ def write_jsonl(path: Path, records: list[dict]) -> None:
             handle.write(json.dumps(record, ensure_ascii=True) + "\n")
 
 
-def append_results_row(path: Path, row: dict) -> None:
+def upsert_results_row(path: Path, row: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    existing_header = path.exists()
     fieldnames = [
         "timestamp",
         "run_name",
@@ -432,11 +440,25 @@ def append_results_row(path: Path, row: dict) -> None:
         "prompts_file",
         "samples_file",
     ]
-    with path.open("a", newline="", encoding="utf-8") as handle:
+
+    rows = []
+    if path.exists():
+        with path.open("r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+
+    replaced = False
+    for idx, existing in enumerate(rows):
+        if existing.get("run_name") == row["run_name"]:
+            rows[idx] = row
+            replaced = True
+            break
+    if not replaced:
+        rows.append(row)
+
+    with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        if not existing_header:
-            writer.writeheader()
-        writer.writerow(row)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def main() -> None:
@@ -588,7 +610,7 @@ def main() -> None:
         "prompts_file": str(prompts_file),
         "samples_file": str(samples_jsonl),
     }
-    append_results_row(results_csv, row)
+    upsert_results_row(results_csv, row)
 
     print("Task 2 evaluation completed.")
     print(f"run_name            : {args.run_name}")
