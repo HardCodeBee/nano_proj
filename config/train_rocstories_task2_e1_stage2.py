@@ -17,7 +17,11 @@ eval_interval = 25
 eval_iters = 100
 log_interval = 10
 
-always_save_checkpoint = False
+# Stage 1 and Stage 2 use different validation distributions, so the resumed
+# best_val_loss is not comparable. Force saving during Stage 2 so the final
+# checkpoint definitely reflects ROCStories adaptation instead of the old
+# TinyStories checkpoint.
+always_save_checkpoint = True
 
 wandb_log = False
 wandb_project = "rocstories"

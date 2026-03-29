@@ -42,7 +42,7 @@ if str(PROJECT_ROOT) not in sys.path:
 DEFAULT_PROMPTS_FILE = PROJECT_ROOT / "prompts" / "task2_eval_prompts.txt"
 DEFAULT_QWEN_PROMPT_FILE = PROJECT_ROOT / "instruction" / "Qwen_scoring_prompt tha.txt"
 DEFAULT_RESULTS_CSV = PROJECT_ROOT / "out-task2" / "results.csv"
-DEFAULT_EVAL_INPUT = PROJECT_ROOT / "data" / "rocstories" / "test_full.txt"
+DEFAULT_EVAL_INPUT = PROJECT_ROOT / "data" / "rocstories" / "val_full.txt"
 DEFAULT_SAMPLES_DIR = PROJECT_ROOT / "out-task2" / "samples"
 DEFAULT_EVAL_LOG_DIR = PROJECT_ROOT / "out-task2" / "eval_logs"
 EOT_TOKEN_ID = 50256
@@ -94,7 +94,11 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Short description of the dataset/training recipe for this run.",
     )
-    parser.add_argument("--eval-input-file", default=str(DEFAULT_EVAL_INPUT))
+    parser.add_argument(
+        "--eval-input-file",
+        default=str(DEFAULT_EVAL_INPUT),
+        help="Defaults to ROCStories val_full.txt; pass locked_test.txt only for occasional final checks.",
+    )
     parser.add_argument("--prompts-file", default=str(DEFAULT_PROMPTS_FILE))
     parser.add_argument("--qwen-prompt-file", default=str(DEFAULT_QWEN_PROMPT_FILE))
     parser.add_argument("--results-csv", default=str(DEFAULT_RESULTS_CSV))

@@ -1,16 +1,19 @@
 """
-Convert ROCStories into nanoGPT-ready local artifacts.
+Convert ROCStories into nanoGPT-ready local artifacts with a three-layer split:
 
-Outputs:
-- train.bin / val.bin: uint16 GPT-2 token streams for nanoGPT training
-- dataset_stats.json: split-level token-length statistics
-- test_full.txt: blank-line-separated validation stories for exact paragraph eval
+- train.bin: official train minus a small held-out validation slice
+- val.bin: held-out slice from the official train split, used for checkpoint selection
+- val_full.txt: blank-line-separated validation stories for day-to-day paragraph eval
+- locked_test.txt: the untouched official public test split, reserved for occasional final checks
+- dataset_stats.json: split-level token-length statistics and split metadata
 
-Processing:
-Each story is tokenized with the GPT-2 BPE tokenizer, then an end-of-text token is
-appended so the model can know where one story stops and the next one begins.
+This keeps Task 2 model selection off the public test split while preserving the
+official test stories as a locked local benchmark.
 """
 
+from __future__ import annotations
+
+import argparse
 import json
 from pathlib import Path
 
@@ -22,19 +25,32 @@ from datasets import load_dataset
 DATASET_ID = "mintujupally/ROCStories"
 TEXT_KEY = "text"
 NUM_PROC = 8
-# Reuse the same tokenizer family 
+VAL_FRACTION = 0.05
+SPLIT_SEED = 2027
 ENC = tiktoken.get_encoding("gpt2")
 
 
-def process(example):
-    # Encode one full story and add an explicit boundary marker between stories.
-    # enc.encode_ordinary ignores any special tokens
-    ids = ENC.encode_ordinary(example[TEXT_KEY])
+def parse_args():
+    parser = argparse.ArgumentParser(description="Prepare ROCStories for Task 2.")
+    parser.add_argument("--dataset-id", default=DATASET_ID)
+    parser.add_argument("--text-key", default=TEXT_KEY)
+    parser.add_argument("--num-proc", type=int, default=NUM_PROC)
+    parser.add_argument(
+        "--val-fraction",
+        type=float,
+        default=VAL_FRACTION,
+        help="Fraction of the official train split to hold out as validation.",
+    )
+    parser.add_argument("--seed", type=int, default=SPLIT_SEED)
+    return parser.parse_args()
 
+
+def process(example, text_key):
+    ids = ENC.encode_ordinary(example[text_key])
     ids.append(ENC.eot_token)
     return {"ids": ids, "len": len(ids)}
 
-# Summarize story length statistics for a given split.
+
 def summarize_lengths(lengths):
     arr = np.array(lengths, dtype=np.int64)
     return {
@@ -48,39 +64,54 @@ def summarize_lengths(lengths):
 
 
 def write_eval_text(path, stories):
-    # eval.py expects paragraphs separated by blank lines in the .txt mode.
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n\n".join(story.strip() for story in stories if story.strip()))
-        f.write("\n")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n\n".join(story.strip() for story in stories if story.strip()))
+        handle.write("\n")
 
 
 if __name__ == "__main__":
+    args = parse_args()
     out_dir = Path(__file__).resolve().parent
-    dataset = load_dataset(DATASET_ID)
-    dataset = {
-        #using the public test split for local evaluation/model selection.
-        "train": dataset["train"],
-        "val": dataset["test"],
+
+    dataset = load_dataset(args.dataset_id)
+    train_split = dataset["train"].train_test_split(
+        test_size=args.val_fraction,
+        seed=args.seed,
+        shuffle=True,
+    )
+    split_map = {
+        "train": train_split["train"],
+        "val": train_split["test"],
     }
+    locked_test = dataset["test"]
 
     print("Loaded ROCStories dataset:")
-    for split, dset in dataset.items():
-        print(f"  {split}: {len(dset):,} stories")
+    print(f"  train: {len(split_map['train']):,} stories")
+    print(f"  val: {len(split_map['val']):,} stories (held out from official train)")
+    print(f"  locked_test: {len(locked_test):,} stories (official public test)")
 
     tokenized = {}
     stats = {
-        "dataset_id": DATASET_ID,
+        "dataset_id": args.dataset_id,
         "tokenizer": "gpt2",
         "separator_token_id": int(ENC.eot_token),
+        "split_policy": {
+            "train_source": "official_train",
+            "val_source": "official_train",
+            "val_fraction": args.val_fraction,
+            "locked_test_source": "official_test",
+            "seed": args.seed,
+        },
         "splits": {},
     }
 
-    for split, dset in dataset.items():
+    for split, dset in split_map.items():
         tokenized_split = dset.map(
             process,
+            fn_kwargs={"text_key": args.text_key},
             remove_columns=dset.column_names,
             desc=f"tokenizing {split}",
-            num_proc=NUM_PROC,
+            num_proc=args.num_proc,
         )
         tokenized[split] = tokenized_split
 
@@ -91,7 +122,6 @@ if __name__ == "__main__":
 
         filename = out_dir / f"{split}.bin"
         arr_len = split_stats["tokens_total"]
-        # nanoGPT reads one long uint16 token stream via np.memmap during training.
         arr = np.memmap(filename, dtype=np.uint16, mode="w+", shape=(arr_len,))
 
         idx = 0
@@ -102,9 +132,8 @@ if __name__ == "__main__":
                 index=batch_idx,
                 contiguous=True,
             ).with_format("numpy")
-            # Writing split shards avoids materializing the whole tokenized dataset at once.
             arr_batch = np.concatenate(batch["ids"]) if len(batch) else np.array([], dtype=np.uint16)
-            arr[idx: idx + len(arr_batch)] = arr_batch
+            arr[idx : idx + len(arr_batch)] = arr_batch
             idx += len(arr_batch)
         arr.flush()
 
@@ -113,11 +142,27 @@ if __name__ == "__main__":
             f"mean/story={split_stats['mean']:.2f}, p95={split_stats['p95']}"
         )
 
-    eval_text_path = out_dir / "test_full.txt"
-    write_eval_text(eval_text_path, dataset["val"][TEXT_KEY])
-    print(f"Saved evaluation text to {eval_text_path}")
+    locked_test_tokenized = locked_test.map(
+        process,
+        fn_kwargs={"text_key": args.text_key},
+        remove_columns=locked_test.column_names,
+        desc="tokenizing locked_test for stats",
+        num_proc=args.num_proc,
+    )
+    locked_stats = summarize_lengths(locked_test_tokenized["len"])
+    locked_stats["stories"] = len(locked_test_tokenized)
+    locked_stats["tokens_total"] = int(np.sum(locked_test_tokenized["len"], dtype=np.uint64))
+    stats["splits"]["locked_test"] = locked_stats
+
+    val_text_path = out_dir / "val_full.txt"
+    write_eval_text(val_text_path, split_map["val"][args.text_key])
+    print(f"Saved validation text to {val_text_path}")
+
+    locked_test_path = out_dir / "locked_test.txt"
+    write_eval_text(locked_test_path, locked_test[args.text_key])
+    print(f"Saved locked test text to {locked_test_path}")
 
     stats_path = out_dir / "dataset_stats.json"
-    with open(stats_path, "w", encoding="utf-8") as f:
-        json.dump(stats, f, indent=2)
+    with open(stats_path, "w", encoding="utf-8") as handle:
+        json.dump(stats, handle, indent=2)
     print(f"Saved stats to {stats_path}")

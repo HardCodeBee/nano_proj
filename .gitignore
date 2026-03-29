@@ -4,6 +4,8 @@ __pycache__/
 
 data/rocstories/*.bin
 data/rocstories/test_full.txt
+data/rocstories/val_full.txt
+data/rocstories/locked_test.txt
 data/shakespeare_char/input.txt
 data/shakespeare_char/meta.pkl
 data/shakespeare_char/*.bin
@@ -16,5 +18,9 @@ out-rocstories/samples.jsonl
 out-rocstories-remote/
 out-shakespeare-char/
 out-rocstories-remote-r*/sample_params.json
+archive/task1/run_history/
+out-task2/eval_logs/
+out-task2/samples/
+out-task2/results.csv
 
 PROJECT_STRUCTURE_TUTORIAL.md

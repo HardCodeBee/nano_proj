@@ -44,7 +44,8 @@ Compare E1 against the frozen baseline:
 
 - Baseline: `r19`
 - Config reference: `config/train_rocstories_r19_frozen.py`
-- Metrics: `avg_loss`, `ppl`, fixed-prompt samples, and automatic judge score
+- Daily metrics: `ROC val` `avg_loss`, `ppl`, fixed-prompt samples, and automatic judge score
+- Locked local check: `ROC locked_test` only for shortlisted checkpoints
 
 ## Commands
 
