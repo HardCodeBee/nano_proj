@@ -100,3 +100,25 @@ Compared with E2, look for:
 - lower `ROC val` `avg_loss` / `ppl`
 - at least some `3` scores from the local automatic judge
 - fewer bland, repetitive, or semantically drifting fixed-prompt outputs
+
+## Current outcome
+
+The corrected prompt-adherence version of E3 has now been tested.
+
+Confirmed result:
+
+- run name: `e3-synth-distill-openai`
+- eval input: `ROC val`
+- `avg_loss = 3.176`
+- `ppl = 23.96`
+- OpenAI-judge proxy mean score: `2.0`
+- repetition failures: `0`
+- truncation failures: `0`
+- prompt drift failures: `0`
+
+Interpretation:
+
+- E3 did not produce a meaningful quality jump over E2
+- it looked slightly cleaner on simple failure heuristics
+- however, it did not improve judged story quality, and it did not beat E2 on `ppl`
+- this makes E3 an informative aggressive exploration, but not the new clear winner

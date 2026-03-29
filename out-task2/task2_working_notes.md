@@ -143,6 +143,39 @@ Interpretation:
 - some local stories are slightly cleaner, but overall story quality is still mostly in the same band
 - E2 should be treated as the current best daily ROC-val checkpoint, but not yet as a decisive final model
 
+### E3: prompt-aligned synthetic distillation
+
+Configs and code path:
+
+- synthetic generator: [generate_rocstories_synthetic.py](C:/Users/12442/Desktop/GitHub/nano_proj/scripts/generate_rocstories_synthetic.py)
+- synthetic prompt: [task2_rocstyle_rewrite_prompt.txt](C:/Users/12442/Desktop/GitHub/nano_proj/prompts/task2_rocstyle_rewrite_prompt.txt)
+- synthetic prepare script: [prepare.py](C:/Users/12442/Desktop/GitHub/nano_proj/data/rocstories_synth/prepare.py)
+- Stage 1 distillation config: [train_rocstories_synth_task2_e3_stage1.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_synth_task2_e3_stage1.py)
+- Stage 2 polish config: [train_rocstories_task2_e3_stage2.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_task2_e3_stage2.py)
+
+Current confirmed result under the new protocol:
+
+- run name: `e3-synth-distill-openai`
+- eval input: `ROC val`
+- `avg_loss = 3.176`
+- `ppl = 23.96`
+- OpenAI-judge proxy mean score: `2.0`
+- repetition failures: `0`
+- truncation failures: `0`
+- prompt drift failures: `0`
+
+Important confirmation:
+
+- the synthetic data used for this run already came from the corrected prompt-adherence generator
+- this was verified by the presence of `source_opening` in the synthetic raw records
+
+Interpretation:
+
+- E3 did not produce a meaningful jump over E2
+- token-level fit was essentially tied with E2
+- local judge score still did not move beyond `2.0`
+- failure counts looked cleaner, but story quality still stayed mostly in the same band
+
 ## 5. Important comparability caveat
 
 The old `r19` checkpoint was trained before the new Task 2 split protocol existed.
@@ -166,6 +199,7 @@ For the report:
 - Stage 2 resume into ROCStories works after forcing checkpoint saving
 - the fixed evaluation runner gives consistent metrics and sample outputs
 - story-aware ROCStories polish gave a small but positive ROC-val improvement over E1
+- prompt-aligned synthetic distillation reduced some heuristic failures, but did not raise judged quality
 
 ### Did not work / issues encountered
 
@@ -174,6 +208,7 @@ For the report:
 - a locally copied E1 `ckpt.pt` became unreadable, so large checkpoint transfer should not be relied on for daily work
 - the historical `r19` checkpoint cannot be fairly compared on the new `ROC val`
 - the first story-aware polish run improved `ppl` only slightly and did not improve the automatic judge score
+- even the corrected E3 prompt-adherence branch did not create a decisive story-quality jump
 
 ## 7. Failure modes observed so far
 
@@ -183,6 +218,7 @@ From the current fixed-prompt samples:
 - semantic drift inside the middle of the story
 - endings are less abrupt than the TinyStories-only model, but still not consistently natural
 - story-aware polish slightly cleaned a few prompts, but many samples remain bland or loosely connected
+- synthetic distillation also produced some cleaner outputs, but did not break out of the same low judge-score regime
 
 These failure modes still match the rubric concerns:
 
@@ -193,16 +229,13 @@ These failure modes still match the rubric concerns:
 
 ## 8. Next high-value experiment
 
-The next aggressive branch is:
+Current high-level conclusion:
 
-`E3 = synthetic ROC-style distillation + final ROCStories polish`
+- E1 was the first clearly useful Task 2 success
+- E2 was the best incremental improvement
+- E3 was a valid aggressive exploration, but it did not clearly outperform E2
 
-Why:
-
-- E1 and E2 improved token-level fit, but did not create a clear jump in judged story quality
-- a stronger model can generate short synthetic stories that stay much closer to the opening prompt we want the small model to follow
-- this keeps the task fully focused on story generation while being more novel than another small sampler tweak
-- it is more likely to produce a story-quality jump than RLHF/DPO under the current time and compute constraints
+If more time remains, the next experiment should change the training target more directly around prompt-conditioned continuation, rather than only changing the source corpus.
 
 Implementation files:
 
@@ -212,6 +245,7 @@ Implementation files:
 - [train_rocstories_synth_task2_e3_stage1.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_synth_task2_e3_stage1.py)
 - [train_rocstories_task2_e3_stage2.py](C:/Users/12442/Desktop/GitHub/nano_proj/config/train_rocstories_task2_e3_stage2.py)
 - [e3_synthetic_distillation_plan.md](C:/Users/12442/Desktop/GitHub/nano_proj/out-task2/e3_synthetic_distillation_plan.md)
+- [task2_current_status.md](C:/Users/12442/Desktop/GitHub/nano_proj/out-task2/task2_current_status.md)
 
 ## 9. Report writing checklist
 
@@ -221,7 +255,8 @@ The final report should be able to pull directly from the following items:
 - ROCStories split policy and evaluation protocol
 - E1 configuration summary
 - E2 story-aware polish summary
-- E3 synthetic-distillation plan and rationale
+- E3 synthetic-distillation result and limitation
+- current bottom-line Task 2 status
 - historical `r19` Task 1 reference
 - current E1 and E2 daily ROC-val results
 - short error analysis from fixed-prompt outputs
