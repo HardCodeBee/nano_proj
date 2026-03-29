@@ -16,38 +16,6 @@ The simplest, fastest repository for training/finetuning medium-sized GPTs. It i
 
 Because the code is so simple, it is very easy to hack to your needs, train new models from scratch, or finetune pretrained checkpoints (e.g. biggest one currently available as a starting point would be the GPT-2 1.3B model from OpenAI).
 
-## coursework: rocstories task 1
-
-This repo also includes a coursework-aligned ROCStories Task 1 setup built under the stated assignment constraints:
-
-- train from scratch only
-- official nanoGPT baby-GPT scale (`n_layer=6`, `n_head=6`, `n_embd=384`)
-- parameter count under the `32M` cap (`29.94M` reported by the model code)
-- no changes to the core `train.py` / `eval.py` evaluation workflow
-
-Submission-facing entry points:
-
-- `data/rocstories/prepare.py`: builds `train.bin`, `val.bin`, `dataset_stats.json`, and `test_full.txt`
-- `config/train_rocstories.py`: current default Task 1 training config
-- `out-rocstories/sample_params.json`: recommended sampling defaults for qualitative generation
-- `out-rocstories/task1_summary.md`: concise Task 1 write-up
-- `out-rocstories/task1_optimization_update.md`: experiment history and tuning trajectory
-
-Minimal reproduction commands:
-
-```sh
-python data/rocstories/prepare.py
-python train.py config/train_rocstories.py
-python eval.py --init_from=resume --out_dir=out-rocstories --input_file=data/rocstories/test_full.txt --print_first_n=0
-python sample.py --init_from=resume --out_dir=out-rocstories --start="Emily forgot her umbrella before leaving for work." --temperature=0.7 --top_k=40
-```
-
-Notes:
-
-- Generated binaries and checkpoints are intentionally gitignored to keep the repo close to the original nanoGPT layout.
-- The best local public-test result documented in the workspace is `avg_loss = 3.216`, `ppl = 24.93` from the historical run `out-rocstories-remote-r19/`.
-- The tracked docs/config files above are the ones to cite in a submission-oriented write-up.
-
 ## install
 
 ```

@@ -181,6 +181,7 @@ Tracked files that should be cited in a submission-oriented repo write-up:
 - Main Task 1 summary: `out-rocstories/task1_summary.md`
 - Optimization log: `out-rocstories/task1_optimization_update.md`
 - Historical process notebook: `out-rocstories/task1_detailed_process.txt`
+- Final submission checklist: `out-rocstories/task1_submission_checklist.md`
 
 Important distinction:
 

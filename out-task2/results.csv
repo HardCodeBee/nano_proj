@@ -1,0 +1,1 @@
+timestamp,run_name,out_dir,dataset_recipe,avg_loss,ppl,mean_qwen_score,qwen_scored_samples,score_1_count,score_2_count,score_3_count,score_4_count,score_5_count,repetition_failures,truncation_failures,prompt_drift_failures,temperature,top_k,max_new_tokens,prompt_count,prompts_file,samples_file
