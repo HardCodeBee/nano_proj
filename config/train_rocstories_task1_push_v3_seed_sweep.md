@@ -1,6 +1,11 @@
-# ROCStories Task 1 V3 Seed Sweep
+# ROCStories Task 1 Push Sweep Notes
 
-Current best configuration is `config/train_rocstories_task1_push_v3.py`:
+This file originally proposed the `v3` seed sweep. That sweep has now been completed,
+and the later `v6` / `v7` follow-ups are the important outcome to keep in mind.
+
+## Completed `v3` Seed Sweep
+
+Base recipe (`config/train_rocstories_task1_push_v3.py`):
 
 - `block_size = 96`
 - `batch_size = 80`
@@ -8,22 +13,37 @@ Current best configuration is `config/train_rocstories_task1_push_v3.py`:
 - `learning_rate = 3.5e-4`
 - `weight_decay = 7e-2`
 
-After `r12` reached `25.16 PPL`, nearby hyperparameter changes (`v4`, `v5`) regressed.
-The next highest-probability move is to keep the `v3` recipe fixed and sweep seeds.
+Completed seed results:
 
-Suggested runs:
+| run | config | seed | ppl |
+| --- | --- | ---: | ---: |
+| `r15` | `v3` | `2027` | `25.10` |
+| `r16` | `v3` | `31415` | `25.24` |
+| `r17` | `v3` | `424242` | `25.31` |
 
-```bash
-python train.py config/train_rocstories_task1_push_v3.py --out_dir=out-rocstories-remote-r15 --device=cuda --dtype=bfloat16 --seed=2027 2>&1 | tee out-rocstories-remote-r15/train.log
-python eval.py --init_from=resume --out_dir=out-rocstories-remote-r15 --input_file=data/rocstories/test_full.txt --print_first_n=0 2>&1 | tee out-rocstories-remote-r15/eval_test_full.log
-```
+Conclusion:
 
-```bash
-python train.py config/train_rocstories_task1_push_v3.py --out_dir=out-rocstories-remote-r16 --device=cuda --dtype=bfloat16 --seed=31415 2>&1 | tee out-rocstories-remote-r16/train.log
-python eval.py --init_from=resume --out_dir=out-rocstories-remote-r16 --input_file=data/rocstories/test_full.txt --print_first_n=0 2>&1 | tee out-rocstories-remote-r16/eval_test_full.log
-```
+- `seed = 2027` was clearly the strongest seed on the `v3` recipe.
+- That seed then became the default for the later continuation runs.
 
-```bash
-python train.py config/train_rocstories_task1_push_v3.py --out_dir=out-rocstories-remote-r17 --device=cuda --dtype=bfloat16 --seed=424242 2>&1 | tee out-rocstories-remote-r17/train.log
-python eval.py --init_from=resume --out_dir=out-rocstories-remote-r17 --input_file=data/rocstories/test_full.txt --print_first_n=0 2>&1 | tee out-rocstories-remote-r17/eval_test_full.log
-```
+## Later Follow-Ups
+
+`v6` extended the strongest `v3/r15` trajectory:
+
+- `r18` (`v6`, seed `2027`) -> `ppl = 25.00`
+
+`v7` then extended training further and evaluated more frequently:
+
+| run | config | seed | ppl |
+| --- | --- | ---: | ---: |
+| `r19` | `v7` | `2027` | `24.93` |
+| `r20` | `v7` | `31415` | `24.98` |
+| `r21` | `v7` | `424242` | `24.96` |
+| `r22` | `v7` | `777777` | `24.95` |
+
+## Current Takeaway
+
+- The short-context recipe (`block_size = 96`, `batch_size = 80`) was the main turning point after the older 128-token baseline plateaued.
+- `seed = 2027` remains the best seed observed in the repo.
+- `config/train_rocstories_task1_push_v7.py` is the current best-performing push config family.
+- `out-rocstories-remote-r19/ckpt.pt` is the current best validated public-test checkpoint.

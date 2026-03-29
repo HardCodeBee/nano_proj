@@ -1,0 +1,14 @@
+Overriding: init_from = resume
+Overriding: out_dir = out-rocstories-remote-r20
+Overriding: input_file = data/rocstories/test_full.txt
+Overriding: print_first_n = 0
+number of parameters: 29.94M
+No meta.pkl found, assuming GPT-2 encodings...
+Loaded 19633 paragraphs from data/rocstories/test_full.txt (format=txt)
+----- Evaluation Results -----
+model           : resume
+paragraphs_used : 19633
+paragraphs_skip : 0
+pred_tokens     : 988345
+avg_loss        : 3.218
+ppl             : 24.98

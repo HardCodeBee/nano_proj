@@ -1,159 +1,160 @@
-/**
- * File role:
- * This is the short, report-friendly summary of the current best validated Task 1 run.
- * Read this file when you want the final setup, refreshed metrics, and updated
- * sample outputs quickly.
- */
-
 # Task 1 Summary: nanoGPT on ROCStories
 
 ## Objective
 
-Train a nanoGPT model from scratch on ROCStories for short story generation, staying within the 32M parameter budget. This summary now reflects the current best validated Task 1 result, obtained on the rented remote GPU after iteratively improving the original baseline, the local tuning reruns, and several remote follow-up experiments.
+Train a nanoGPT model from scratch on ROCStories for short story generation while staying within the course constraints:
+
+- no external pretrained weights
+- no model larger than `32M` parameters
+- no changes to the evaluation/upload workflow
+
+This summary is synchronized to the current best validated public-test result in the workspace: `out-rocstories-remote-r19/` with `avg_loss = 3.216` and `ppl = 24.93`.
 
 ## Data Pipeline
 
 - Dataset: `mintujupally/ROCStories`
-- Train split: 78,528 stories
-- Public test split used as local validation/evaluation split: 19,633 stories
+- Train split: `78,528` stories
+- Public test split used as the local validation/evaluation split: `19,633` stories
 - Tokenizer: GPT-2 BPE via `tiktoken`
-- Story boundary handling: append GPT-2 `eot` token (`50256`) after every story
-- Binary files generated for nanoGPT: `data/rocstories/train.bin`, `data/rocstories/val.bin`
+- Story separator: append GPT-2 `eot` token (`50256`) after every story
+- Binary files produced for nanoGPT: `data/rocstories/train.bin`, `data/rocstories/val.bin`
 
 Token statistics from `data/rocstories/dataset_stats.json`:
 
-- Train tokens: 4,111,142
-- Val tokens: 1,027,611
-- Mean story length: 52.35 tokens
-- 95th percentile story length: 69 tokens
-- Max story length: 109 tokens
+- Train tokens: `4,111,142`
+- Val tokens: `1,027,611`
+- Mean story length: `52.35` tokens
+- 95th percentile story length: `69` tokens
+- Max train length: `109` tokens
+- Max val length: `91` tokens
 
-Based on these statistics, `block_size=128` was kept because one full story still fits comfortably in context.
+Why the later runs switched from `block_size = 128` to `block_size = 96`:
+
+- ROCStories are short, and the public validation split almost always fits inside 96 GPT-2 tokens.
+- Reducing context length let the model focus capacity on the part of the sequence that actually matters most for this dataset while also allowing a slightly larger batch.
 
 ## Model
 
-- Architecture: official nanoGPT baby GPT scale
+- Architecture: official nanoGPT baby-GPT scale
 - `n_layer = 6`
 - `n_head = 6`
 - `n_embd = 384`
-- `dropout = 0.1`
 - `bias = False`
-- Parameter count: 29.94M
+- Parameter count: `29.94M`
 
-## Best Validated Training Setup
+This stays safely within the assignment's `32M` cap.
 
-- Source of best result: remote GPU follow-up run using the stronger 8k-step setup with a slightly lower `min_lr`, evaluated exactly on the full public test file
+## Current Best Validated Setup
+
+Winning run:
+
+- Checkpoint directory: `out-rocstories-remote-r19/`
+- Originating config family: `config/train_rocstories_task1_push_v7.py`
+- Current synced local default: `config/train_rocstories.py`
+
+Main hyperparameters:
+
 - Initialization: from scratch (`init_from = scratch`)
-- Device: single GPU (`NVIDIA RTX A6000`)
-- Batch size: 64
-- Gradient accumulation steps: 1
-- Effective tokens/iteration: 8,192
-- Learning rate: 4e-4
+- Batch size: `80`
+- Gradient accumulation steps: `1`
+- Block size: `96`
+- Dropout: `0.14`
+- Learning rate: `3.5e-4`
 - Scheduler: cosine decay
-- Warmup iters: 300
-- Decay iters: 8000
-- Min learning rate: 1e-5
-- Max iters: 8000
+- Warmup iters: `500`
+- Decay iters: `12000`
+- Max iters: `12000`
+- Min learning rate: `1e-5`
 - `beta2 = 0.99`
-- `weight_decay = 0.05`
-- Seed: 1337 (inherited from `train.py`)
+- `weight_decay = 0.07`
+- Evaluation interval: `25`
+- Evaluation iters: `100`
+- Seed: `2027`
 - `compile = False`
 
-Checked-in config note:
+Best validation checkpoint inside the run:
 
-- The current local `config/train_rocstories.py` is aligned with the best validated Task 1 setup itself: `max_iters = 8000`, `min_lr = 1e-5`, `beta2 = 0.99`, and `eval_iters = 100`.
+- Best validation loss in `train.log`: `3.2774`
+- Best validation step: `11175`
 
-Approximate wall-clock time:
+Exact public test evaluation using `eval.py`:
 
-- Data preparation: already available
-- Training run: completed on the rented `NVIDIA RTX A6000`
-- Full public test evaluation: exact `eval.py` run on the remote result after copying `test_full.txt`
+- Paragraphs used: `19,633`
+- Predicted tokens: `988,345`
+- Average loss: `3.216`
+- Perplexity: `24.93`
 
-## Training Curve Highlights
+## Improvement Timeline
 
-- Step 0: val loss 10.8923
-- Step 200: val loss 5.3561
-- Step 1000: val loss 4.0420
-- Step 2000: val loss 3.6067
-- Step 4200: val loss 3.3731
-- Step 7000: val loss 3.2999
-- Step 7200: val loss 3.2889
-- Step 7400: val loss 3.2821
-- Step 7600: val loss 3.2850
-- Step 8000: val loss 3.2763
+Main milestones:
 
-Note: the best exact public-test result now comes from the remote follow-up that changed only `min_lr` from `2e-5` to `1e-5`. Earlier remote follow-ups at `6e-5`, `4e-5`, `3e-5`, `2e-5`, a 10k-step continuation, and a smoother-checkpoint-selection run all performed slightly worse or only marginally better.
+| stage | main change | avg_loss | ppl |
+| --- | --- | ---: | ---: |
+| original baseline | first scratch Task 1 baseline | `3.364` | `28.89` |
+| local optimization rerun | lower dropout + longer schedule | `3.318` | `27.60` |
+| local tuned round 2 | lower LR + lower weight decay | `3.299` | `27.09` |
+| `r6` | best 128-token baseline | `3.242` | `25.57` |
+| `r8-r12` | short-context push (`block_size = 96`) | `3.225` | `25.16` |
+| `r15` | best `v3` seed sweep (`seed = 2027`) | `3.223` | `25.10` |
+| `r18` | longer `v6` continuation | `3.219` | `25.00` |
+| `r19` | longer + denser `v7` checkpointing | `3.216` | `24.93` |
 
-## PPL Reduction Path
+Recent seed comparison on the final `v7` recipe:
 
-- Original Task 1 baseline: `avg_loss = 3.364`, `ppl = 28.89`
-- First optimization rerun: lower `dropout` and longer schedule -> `avg_loss = 3.318`, `ppl = 27.60`
-- Second local tuning round: lower `learning_rate` and `weight_decay` -> `avg_loss = 3.299`, `ppl = 27.09`
-- Remote validation run: same 8k-step recipe on A6000 with `min_lr = 6e-5` -> `avg_loss = 3.253`, `ppl = 25.86`
-- Remote follow-up: `min_lr = 4e-5` -> `avg_loss = 3.247`, `ppl = 25.70`
-- Remote 10k-step follow-up: longer schedule -> `avg_loss = 3.255`, `ppl = 25.92`
-- Remote checkpoint-selection follow-up: `beta2 = 0.995`, `eval_iters = 200` -> `avg_loss = 3.251`, `ppl = 25.83`
-- Remote `r4` follow-up: `min_lr = 3e-5` -> `avg_loss = 3.244`, `ppl = 25.65`
-- Remote `r5` follow-up: `min_lr = 2e-5` -> `avg_loss = 3.242`, `ppl = 25.59`
-- Remote `r6` follow-up: `min_lr = 1e-5` -> `avg_loss = 3.242`, `ppl = 25.57`
+| run | seed | best val loss | ppl |
+| --- | ---: | ---: | ---: |
+| `r19` | `2027` | `3.2774` | `24.93` |
+| `r20` | `31415` | `3.2849` | `24.98` |
+| `r21` | `424242` | `3.2746` | `24.96` |
+| `r22` | `777777` | `3.2753` | `24.95` |
 
-## Final Quantitative Result
+Takeaway:
 
-Exact evaluation on the full public ROCStories test split using `eval.py`:
+- The seed with the best validation loss was not always the seed with the best public-test PPL.
+- `r19` remained the best exact public-test checkpoint, so it is the current preferred checkpoint for reporting and submission preparation.
 
-- Paragraphs used: 19,633
-- Predicted tokens: 988,345
-- Average loss: 3.242
-- Perplexity: 25.57
+## Qualitative Samples From The Current Best Run
 
-Improvement over the original Task 1 baseline:
+Sampling command family:
 
-- Average loss: `3.364 -> 3.242`
-- Perplexity: `28.89 -> 25.57`
-
-Improvement over the first optimization rerun:
-
-- Average loss: `3.318 -> 3.242`
-- Perplexity: `27.60 -> 25.57`
-
-Improvement over the previous best remote result:
-
-- Average loss: `3.242 -> 3.242` (same to three decimals)
-- Perplexity: `25.59 -> 25.57`
-
-## Qualitative Samples
+- checkpoint: `out-rocstories-remote-r19`
+- `temperature = 0.7`, `top_k = 40` for safer decoding
+- `temperature = 0.9`, `top_k = 100` for more diverse but less stable decoding
 
 Prompt: `Emily forgot her umbrella before leaving for work.`
 
 - `temperature=0.7, top_k=40`
-  - `Emily forgot her umbrella before leaving for work. She arrived at the door to get in the car for the rain. When it was raining, she realized that she forgot to bring her umbrella. She quickly ran to the store and bought her umbrella. She felt better for making it to her house.`
+  - `Emily forgot her umbrella before leaving for work. She took off her umbrella one day and it started to rain. She was so disappointed and started to cry. She spent all day in the rain. She was able to stay inside until she was muddy and tired.`
 - `temperature=0.9, top_k=100`
-  - `Emily forgot her umbrella before leaving for work. She wanted to sit down to get in the car for so long. When it got to work, it started to rain very hard. Emily got out to leave her umbrella at work. She found her umbrella in the wash.`
+  - `Emily forgot her umbrella before leaving for work. She took off her umbrella into the school center. In fact she was stuck there the entire day. The only way spent Amy was late to the school she was late. Emily was late to work.`
 
 Prompt: `Tom decided to cook dinner for his friends.`
 
 - `temperature=0.7, top_k=40`
-  - `Tom decided to cook dinner for his friends. He wanted to make sure to bake a cake. He mixed his ingredients in the oven. He made a delicious cake. Tom was happy he got a lot more prepared.`
+  - `Tom decided to cook dinner for his friends. He set up a cooking competition for them. Tom was nervous but did not know the results. He wound up burning everyone's food. Tom wound up burning the entire cooking for them.`
 - `temperature=0.9, top_k=100`
-  - `Tom decided to cook dinner for his friends. He wanted some sausage but didn't have enough money for the sauce. He decided to make some chicken. He cooked the bacon and then cut the oven! Tom loved the meal but he was so happy he cooked.`
+  - `Tom decided to cook dinner for his friends. It was the best meal ever. Tom was a bit sick of smoke and kept the meal. He served up for extra food and everyone was visibly upset. Everyone was humiliated and annoyed.`
 
 ## Brief Error Analysis
 
-- Strengths:
-  - The model still preserves the short five-sentence ROCStories rhythm reasonably well.
-  - The latest remote A6000 follow-up improved full-set perplexity again without changing model size.
-  - Lower-temperature decoding remains more coherent than higher-temperature decoding.
-- Common failure modes:
-  - The model can still emit a second story after `eot` if generation is not truncated there.
-  - Some samples remain logically awkward or repetitive.
-  - Higher-temperature decoding still increases inconsistency noticeably.
+Strengths:
 
-## Files Produced
+- The model reliably preserves the short ROCStories cadence better than the original baseline.
+- The short-context configuration improved public-test PPL without increasing parameter count.
+- Lower-temperature decoding now tends to keep a clearer five-sentence arc than the older 128-token baseline.
 
-- Current local preparation config: `config/train_rocstories.py`
-- Earlier validated remote snapshot: `out-rocstories-remote-r1/`
-- Later remote comparison snapshot: `out-rocstories-remote-r2/`
-- Current best remote snapshot: `out-rocstories-remote-r6/`
-- Sampling defaults: `out-rocstories/sample_params.json`
-- Summary: `out-rocstories/task1_summary.md`
-- Optimization note: `out-rocstories/task1_optimization_update.md`
+Common failure modes:
+
+- The model can still repeat concepts within a story or end on an awkward sentence.
+- Higher-temperature decoding noticeably increases grammar slips and logic jumps.
+- If generation is not truncated at `<|endoftext|>`, the model may continue into a second story.
+
+## Current Canonical Files
+
+- Default synced training config: `config/train_rocstories.py`
+- Best push config family: `config/train_rocstories_task1_push_v7.py`
+- Current best checkpoint: `out-rocstories-remote-r19/`
+- Current best sampling defaults: `out-rocstories-remote-r19/sample_params.json`
+- Historical 128-token milestone config: `config/train_rocstories_r6_best.py`
+- Optimization log: `out-rocstories/task1_optimization_update.md`
+- Historical process notebook: `out-rocstories/task1_detailed_process.txt`

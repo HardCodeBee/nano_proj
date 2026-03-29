@@ -1,7 +1,10 @@
 """
-Exact Task 1 ROCStories baseline that matched the current best exact public-test
-result in this repo (25.57 PPL on data/rocstories/test_full.txt).
-Use this when reproducing the known-good run before trying new variations.
+Historical ROCStories milestone config.
+
+This file reproduces the earlier 128-token baseline that reached `25.57` PPL on
+the public ROCStories test split (`out-rocstories-remote-r6`). It is no longer the
+best exact result in the repo, but it remains a useful reference point before the
+later short-context push (`r8+`) improved the metric further.
 """
 
 out_dir = "out-rocstories-r6-best"
