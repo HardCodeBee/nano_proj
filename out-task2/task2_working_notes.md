@@ -3,7 +3,7 @@
 ## Purpose
 
 This file keeps short narrative notes that are useful for later report writing.
-It should stay lighter than `task2_experiments.md` and focus on interpretation rather than exhaustive inventory.
+It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.csv`, and focus on interpretation rather than exhaustive inventory.
 
 ## Current report-ready storyline
 

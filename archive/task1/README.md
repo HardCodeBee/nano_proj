@@ -9,8 +9,9 @@ the active workspace can stay focused on Task 2.
 - `config/train_rocstories_r19_frozen.py`
 - `config/train_tinystories_task2_e1_stage1.py`
 - `config/train_rocstories_task2_e1_stage2.py`
-- `out-task2/task2_current_status.md`
-- `out-task2/task2_experiments.md`
+- `out-task2/codex_context.md`
+- `out-task2/task2_working_notes.md`
+- `out-task2/results.csv`
 - `out-rocstories-remote-r19/`
 
 ## Baseline record
