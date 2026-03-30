@@ -13,6 +13,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - E3 tested a more aggressive prompt-aligned synthetic-distillation branch. It was novel and correctly targeted opening adherence, but it still did not produce a decisive judged-quality jump.
 - E4 finally produced a clearer signal: the simple post-`EOT` masking ablation helped, but the heavier continuation-weighted follow-up stages did not extend that gain.
 - E5 added a synthetic continuation-aware backup line. It produced the highest local judge score so far in Stage 1, but with a severe `ppl` regression, and the recovery stage gave up that judge gain while only partly repairing token-level fit.
+- E6 and E7 then tested two different follow-up ideas on real ROCStories: broader mixed sampling and a near-capacity warm-start expansion. Neither beat the simpler E4 Step-1 checkpoint.
 
 ## What is safe to claim
 
@@ -22,6 +23,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - Synthetic continuation-aware polish can raise the local judge, but the current E5 version did so in an unstable way that badly hurt token-level fit.
 - For this small model, improving `ppl` turned out to be easier than improving judged story quality.
 - The strongest practical checkpoint so far is `e4-posteot-mask-openai`, because it improved both token-level fit and the local judge without needing the later E4 stages.
+- The E6 and E7 follow-ups strengthen that conclusion: neither broader mixed sampling nor the current 7-layer warm-start recipe improved over E4 Step 1.
 
 ## What should be stated carefully
 
@@ -30,7 +32,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - E3 should not be oversold. It was a meaningful aggressive experiment, but it did not clearly beat E2.
 - The later E4 stages should also not be oversold. Continuation weighting, ending boost, and short recovery were informative ablations, but they did not beat the simpler Step-1 masking result.
 - E5 also needs careful framing. Stage 1 may be useful as a clue about what the judge likes, but it is not a clean winner because its `ppl` regressed sharply; Stage 2 recovered some fit but lost the quality gain.
-- Newer E6 / E7 follow-up branches should be framed as pending, not as wins or failures yet. `e6-mixed-masked` has a local checkpoint, but there is still no fixed-eval row for it in `out-task2/results.csv`.
+- E6 and E7 should now be framed as negative or neutral follow-ups, not pending branches. They were useful ablations, but they did not beat `e4-posteot-mask-openai`.
 - The local automatic judge is only a proxy for the final evaluation; it is useful, but not the official private-test scorer.
 
 ## Failure pattern summary
@@ -46,7 +48,8 @@ The main bottleneck is no longer simply dataset choice.
 The deeper problem is that the model still struggles with prompt-conditioned continuation: turning an opening sentence into a compact, coherent, naturally ending short story.
 E4 suggests one concrete part of that problem was real training noise from cross-story spillover. Cleaning that up helped; more aggressive continuation reweighting did not yet produce an additional win.
 E5 suggests a second clue: synthetic continuation-aware training can move the local judge, but the present recipe is too distribution-shifting to keep the model well calibrated on standard token-level fit.
-The new planning takeaway is that the current `6-layer / 384-dim` family is already close to the coursework size cap, so the remaining serious levers are better real-data coverage plus a carefully targeted near-capacity depth/context expansion, not naive width scaling.
+E6 adds a third clue: the E4 gain was not robust to restoring broader mixed-sampling coverage, so part of that gain may depend on the story-start-heavy training distribution rather than on a universally better objective.
+E7 adds a fourth clue: a near-capacity depth/context expansion by itself is not enough under the current recipe and budget; the bottleneck is not solved just by making the model slightly larger.
 
 ## If writing the report now
 
@@ -57,11 +60,12 @@ Main Task 2 arc:
 3. Add story-aware polish.
 4. Try a more aggressive prompt-aligned synthetic-distillation branch.
 5. Test story-bounded masking and continuation-weighted supervision on real ROCStories.
-6. Conclude that the best practical checkpoint came from the simple post-`EOT` masking fix, while token-level improvements remained easier to obtain than consistent judged story-quality gains.
+6. Test broader mixed-sampling and near-capacity warm-start follow-ups.
+7. Conclude that the best practical checkpoint still came from the simple post-`EOT` masking fix, while token-level improvements remained easier to obtain than consistent judged story-quality gains.
 
 ## Next-step note
 
 If experimentation continues, the next useful branch should change the training target more directly around opening-to-story continuation rather than only changing the source corpus again.
-This round, that direction was tested: story-bounded masking worked best, while the heavier continuation-weighted stages did not surpass it.
+This direction has now been tested more fully: story-bounded masking worked best, while the heavier continuation-weighted stages, the broader mixed-sampling follow-up, and the current near-capacity warm-start expansion all failed to surpass it.
 The synthetic backup route should still stay separate in reporting: it surfaced an interesting judge-side gain, but the real-data bar to beat remains `e4-posteot-mask-openai` until that gain can be retained without the large `ppl` penalty.
-The concrete next execution plan is now two-lane: first run the lower-risk `e6-mixed-masked` real-data continuation, then, if budget allows, test the higher-upside `e7-warmstart-depth7-bs128` branch that stays within the `<= 32M` limit.
+The next execution plan should no longer treat E6 or E7 as pending. Instead, it should explain why the E4 Step-1 gain disappeared under broader sampling and whether the only judge-moving line, E5, can be stabilized without breaking token-level fit.

@@ -34,8 +34,10 @@
 - Confirmed from `out-task2/results.csv`: the heavier E4 stages did not beat Step 1; `e4-continuation-weighted-openai` returned to judge `2.0`, while `e4-ending-boost-openai` and `e4-recovery-openai` dropped to `1.9`.
 - Confirmed from `out-task2/results.csv`: `e5-synth-continuation-weighted-openai` reached the highest local judge so far at `2.4`, but with a very large token-level regression to `avg_loss / ppl = 3.796 / 44.51`.
 - Confirmed from `out-task2/results.csv`: `e5-recovery-openai` partially repaired token-level fit to `3.234 / 25.39`, but its local judge fell back to `2.0`, so E5 did not produce a clean overall win over `e4-posteot-mask-openai`.
-- Confirmed from repo state: new follow-up configs now exist for `e6-mixed-masked`, `e6-gentle-continuation`, and `e7-warmstart-depth7-bs128`; only `out-task2-e6-mixed-masked/ckpt.pt` currently exists, and it has not yet been evaluated through the fixed Task 2 scorer.
-- Confirmed from checkpoint inspection: `out-task2-e6-mixed-masked/ckpt.pt` was saved at `iter_num = 15200` with `best_val_loss = 4.5530`, but without a `results.csv` row it is not yet comparable under the current daily ranking rule.
+- Confirmed from `out-task2/results.csv`: `e6-mixed-masked-openai` scored `3.173 / 23.88 / 2.0`, so restoring broader mixed real-ROC coverage did not preserve the E4 Step-1 gain.
+- Confirmed from `out-task2/results.csv`: `e6-gentle-continuation-openai` scored `3.177 / 23.98 / 2.0`, so a milder continuation-weighted follow-up also failed to improve over `e4-posteot-mask-openai`.
+- Confirmed from `out-task2/results.csv`: `e7-warmstart-depth7-bs128-openai` scored `3.206 / 24.67 / 2.0`, so the near-capacity warm-start expansion did not improve either token-level fit or local judged quality under the current recipe.
+- Confirmed from remote checkpoint inspection: the returned checkpoints finished at `iter_num = 16500` for E6 Step 1, `17500` for E6 Step 2, and `6000` for E7, with checkpoint `best_val_loss` values `3.4166`, `3.4295`, and `3.4504` respectively.
 - Confirmed from model sizing: the `e7-warmstart-depth7-bs128` config is about `31.71M` non-embedding parameters under the current `model.py`, so it stays within the `<= 32M` course cap.
 - Confirmed: active Task 2 documentation is now intentionally limited to `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/results.csv`, and `out-task2/decision_log.md`; the old `task2_current_status.md` / `task2_experiments.md` placeholders were removed to avoid duplicate maintenance.
 - Known limitation: local judge scores remain stuck around `2.0`; improving `ppl` has been easier than improving judged story quality.
@@ -161,6 +163,24 @@
   `avg_loss / ppl`: `3.234 / 25.39`
   `judge score`: `2.0`
   Notes: recovery improved over raw E5 Stage 1 `ppl`, but did not preserve the judge gain
+- `run_name`: `e6-mixed-masked-openai`
+  `out_dir`: `out-task2-e6-mixed-masked`
+  `dataset_recipe`: `ROCStories mixed masked continuation from e4-posteot-mask`
+  `avg_loss / ppl`: `3.173 / 23.88`
+  `judge score`: `2.0`
+  Notes: broader mixed sampling lost the E4 Step-1 edge; no new failure flags, but no quality gain either
+- `run_name`: `e6-gentle-continuation-openai`
+  `out_dir`: `out-task2-e6-gentle-continuation`
+  `dataset_recipe`: `ROCStories mixed masked continuation plus gentle continuation weighting`
+  `avg_loss / ppl`: `3.177 / 23.98`
+  `judge score`: `2.0`
+  Notes: mild continuation weighting did not recover the E4 Step-1 advantage
+- `run_name`: `e7-warmstart-depth7-bs128-openai`
+  `out_dir`: `out-task2-e7-warmstart-depth7-bs128`
+  `dataset_recipe`: `ROCStories warm-started 7-layer 128-context expansion from e4-posteot-mask`
+  `avg_loss / ppl`: `3.206 / 24.67`
+  `judge score`: `2.0`
+  Notes: near-capacity expansion underperformed E4 on both token fit and local judged quality
 
 # Current Status
 - Completed: E1 curriculum, E2 story-aware polish, E3 corrected synthetic-distillation implementation and evaluation; explicit repository-local context workflow was recorded for Task 2 / Task 3.
@@ -170,9 +190,9 @@
 - Completed this round: `scripts/task2_generate_and_score.py` was updated so remote scoring can fall back to `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` instead of requiring `QWEN_API_KEY`.
 - Completed this round: raw source was re-read against the context docs; pending E6 / E7 branches were resynced, and a leaked API key example in `instruction/FurtherInstructions.txt` was removed.
 - Completed this round: local ROCStories story metadata was rebuilt from the existing `train.bin` / `val.bin` streams, and the updated E6 / E7 configs now pass local CPU loader sanity checks with the new `warmstart_path` support.
-- In progress: `out-task2-e6-mixed-masked/ckpt.pt` exists locally and should be run through the fixed Task 2 evaluation path before it is compared against `e4-posteot-mask-openai`.
-- In progress: decide whether E5 Stage 1's higher local judge merits shortlist attention, and whether E6 / E7 should be the next formally scored real-data branches.
-- Current blocker: no scored run has yet improved both local judged quality and token-level fit at the same time beyond `e4-posteot-mask-openai`.
+- Completed this round: the remote E6 and E7 follow-up runs were pulled back locally and synced into the fixed Task 2 results table.
+- In progress: decide whether E5 Stage 1's higher local judge merits shortlist attention, and why the E4 Step-1 gain disappeared once sampling was broadened or capacity/context was increased.
+- Current blocker: no scored run has yet improved both local judged quality and token-level fit beyond `e4-posteot-mask-openai`; real-data branches remain stuck around judge `2.0-2.1`, and `ppl ≈ 20` is still far away.
 
 # Decisions
 - 2026-03-30 | Use new `ROC val` for daily Task 2 comparison | Avoid daily tuning on public test | `data/rocstories/prepare.py`, `scripts/task2_generate_and_score.py`
@@ -188,21 +208,22 @@
 - 2026-03-31 | Keep E6 / E7 out of the daily comparison table until they pass through the fixed Task 2 scorer | Local checkpoints and drafted configs exist, but the apples-to-apples comparison rule is defined by `scripts/task2_generate_and_score.py` plus `out-task2/results.csv` | `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/results.csv` | `e4-posteot-mask-openai` remains the scored comparison bar for now
 - 2026-03-31 | Remove the raw API key example from `instruction/FurtherInstructions.txt` | Repository docs and source must not contain live secrets; judge credentials belong in env vars or CLI flags only | `instruction/FurtherInstructions.txt`, `out-task2/codex_context.md`, `out-task2/decision_log.md` | Use placeholders in docs, never committed keys
 - 2026-03-31 | Treat GitHub push/pull as the required bridge between local edits and remote training | Remote shells only see committed and pushed files, so remote execution instructions must include a local push step before any remote `git pull` + train sequence | `out-task2/codex_context.md`, `out-task2/decision_log.md` | Do not reference configs that exist only in the local worktree
+- 2026-03-31 | Keep `e4-posteot-mask-openai` as the real-data leader after scoring E6 and E7 | `e6-mixed-masked`, `e6-gentle-continuation`, and `e7-warmstart-depth7-bs128` all returned judge `2.0` and worse `ppl` than E4 Step 1 | `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/decision_log.md` | Mixed sampling and near-capacity expansion did not extend the E4 gain under the current protocol
 
 # Verification
 - Already run: `data/rocstories/prepare.py`, E1 / E2 / E3 training branches, the full four-stage E4 line, `task2_generate_and_score.py`, local `py_compile` on the new E4-related Python files, local `py_compile` on the updated Task 2 scorer env-fallback patch, source reread of `train.py`, `model.py`, `data/rocstories/prepare.py`, `data/rocstories_synth/prepare.py`, `eval.py`, `scripts/task2_generate_and_score.py`, and the active Task 2 configs
 - Result: `e4-posteot-mask-openai` reached `3.165 / 23.70 / 2.1`; `e4-continuation-weighted-openai` reached `3.166 / 23.72 / 2.0`; `e4-ending-boost-openai` reached `3.172 / 23.85 / 1.9`; `e4-recovery-openai` reached `3.172 / 23.86 / 1.9`
 - Result: `e5-synth-continuation-weighted-openai` reached `3.796 / 44.51 / 2.4`; `e5-recovery-openai` reached `3.234 / 25.39 / 2.0`
 - Result: `data/rocstories/prepare.py --metadata-only` rebuilt the missing `train_*` / `val_*` metadata arrays for `74,601` train and `3,927` val stories from the existing local token streams.
-- Result: `out-task2-e6-mixed-masked/ckpt.pt` exists locally with `iter_num = 15200` and `best_val_loss = 4.5530`, but it has not yet been scored through `scripts/task2_generate_and_score.py`.
-- Result: the planned `e7-warmstart-depth7-bs128` configuration is about `31.71M` non-embedding parameters under the current `model.py`.
-- Result: CPU `eval_only` dry-runs now stop after the first evaluation on both the E6 and E7 configs; these are loader/path sanity checks only, not fixed-protocol Task 2 metrics.
-- Unverified risk: E5 Stage 1's `2.4` local judge may reflect proxy-judge preference or synthetic-distribution shift rather than a robust overall story-quality gain; E6 / E7 may or may not change the ranking, but they remain unverified until fixed-eval metrics are recorded.
+- Result: `e6-mixed-masked-openai` reached `3.173 / 23.88 / 2.0`; `e6-gentle-continuation-openai` reached `3.177 / 23.98 / 2.0`; `e7-warmstart-depth7-bs128-openai` reached `3.206 / 24.67 / 2.0`.
+- Result: the returned remote checkpoints finished at `iter_num = 16500`, `17500`, and `6000` for E6 Step 1, E6 Step 2, and E7, with checkpoint `best_val_loss` values `3.4166`, `3.4295`, and `3.4504`.
+- Result: the planned `e7-warmstart-depth7-bs128` configuration stayed within the cap at about `31.71M` non-embedding parameters under the current `model.py`, but that capacity increase alone did not improve the fixed-protocol metrics.
+- Unverified risk: E5 Stage 1's `2.4` local judge may reflect proxy-judge preference or synthetic-distribution shift rather than a robust overall story-quality gain; it remains the only line that materially moved the judge, but at an unacceptable token-level cost so far.
 
 # Next Steps
 - Next 1: on every future Task 2 / Task 3 turn, read this file and `out-task2/task2_working_notes.md` before new work.
 - Next 2: after reading context files, re-read the relevant raw source/config/eval files before each new experiment, bug fix, or report update.
 - Next 3: use `e4-posteot-mask-openai` as the new daily comparison bar for future real-data Task 2 work.
-- Next 4: run the fixed scorer on `out-task2-e6-mixed-masked` before changing any daily ranking claims.
+- Next 4: inspect why `story_start + post-EOT mask` worked better than the broader mixed-sampling E6 variants; the current evidence suggests the gain was fragile to sampling changes.
 - Next 5: inspect E5 Stage 1 samples closely before deciding whether its higher local judge is meaningful enough to justify shortlist attention despite the poor `ppl`.
-- Next 6: if E6 merits a follow-up, score `e6-gentle-continuation`; if the near-capacity expansion is pursued, keep `e7-warmstart-depth7-bs128` within the `<= 32M` cap and compare it only after fixed evaluation.
+- Next 6: if experimentation continues, avoid treating wider context or one-step capacity expansion as a default fix; any next branch should have a more targeted hypothesis than the current E7 recipe.
