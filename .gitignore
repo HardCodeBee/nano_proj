@@ -5,6 +5,7 @@ __pycache__/
 data/rocstories/*.bin
 data/rocstories/*_story_starts.npy
 data/rocstories/*_story_lengths.npy
+data/rocstories/*_first_sentence_lengths.npy
 data/rocstories/test_full.txt
 data/rocstories/val_full.txt
 data/rocstories/locked_test.txt
@@ -12,6 +13,7 @@ data/rocstories_synth/raw/
 data/rocstories_synth/*.bin
 data/rocstories_synth/*_story_starts.npy
 data/rocstories_synth/*_story_lengths.npy
+data/rocstories_synth/*_first_sentence_lengths.npy
 data/rocstories_synth/val_full.txt
 data/rocstories_synth/dataset_stats.json
 data/shakespeare_char/input.txt
