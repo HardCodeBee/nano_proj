@@ -85,6 +85,30 @@ def default_dtype() -> str:
     return "float32"
 
 
+def default_judge_api_key() -> str | None:
+    return os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
+
+
+def default_judge_base_url() -> str:
+    if os.getenv("QWEN_BASE_URL"):
+        return os.getenv("QWEN_BASE_URL")
+    if os.getenv("OPENAI_BASE_URL"):
+        return os.getenv("OPENAI_BASE_URL")
+    if os.getenv("OPENAI_API_KEY") and not (os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY")):
+        return "https://api.openai.com/v1"
+    return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+
+def default_judge_model() -> str:
+    if os.getenv("QWEN_MODEL"):
+        return os.getenv("QWEN_MODEL")
+    if os.getenv("OPENAI_MODEL"):
+        return os.getenv("OPENAI_MODEL")
+    if os.getenv("OPENAI_API_KEY") and not (os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY")):
+        return "gpt-4o-mini"
+    return "qwen-plus"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run fixed Task 2 evaluation for one checkpoint.")
     parser.add_argument("--run-name", required=True, help="Short run identifier written to results.csv.")
@@ -113,16 +137,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=None, help="Override sample_params.json temperature.")
     parser.add_argument("--top-k", type=int, default=None, help="Override sample_params.json top_k.")
     parser.add_argument("--skip-qwen", action="store_true", help="Skip automatic Qwen scoring.")
-    parser.add_argument("--qwen-model", default=os.getenv("QWEN_MODEL", "qwen-plus"))
+    parser.add_argument("--qwen-model", default=default_judge_model())
     parser.add_argument(
         "--qwen-base-url",
-        default=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-        help="OpenAI-compatible base URL. /chat/completions will be appended if needed.",
+        default=default_judge_base_url(),
+        help="OpenAI-compatible base URL. Falls back to QWEN/OpenAI env vars before the DashScope default.",
     )
     parser.add_argument(
         "--qwen-api-key",
-        default=os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
-        help="API key. Defaults to QWEN_API_KEY or DASHSCOPE_API_KEY env var.",
+        default=default_judge_api_key(),
+        help="API key. Defaults to QWEN_API_KEY, DASHSCOPE_API_KEY, or OPENAI_API_KEY.",
     )
     parser.add_argument("--qwen-timeout", type=int, default=60)
     parser.add_argument("--qwen-max-retries", type=int, default=3)
@@ -532,7 +556,10 @@ def main() -> None:
     prompt_drift_failures = 0
 
     if not args.skip_qwen and not args.qwen_api_key:
-        raise ValueError("Qwen scoring is enabled but no API key was provided. Set QWEN_API_KEY or pass --qwen-api-key.")
+        raise ValueError(
+            "Qwen scoring is enabled but no API key was provided. "
+            "Set QWEN_API_KEY, DASHSCOPE_API_KEY, OPENAI_API_KEY, or pass --qwen-api-key."
+        )
 
     for record in samples:
         repetition_failure = detect_repetition(record["continuation_text"])
