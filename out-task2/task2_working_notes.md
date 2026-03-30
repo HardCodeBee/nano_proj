@@ -12,12 +12,14 @@ It should stay lighter than `task2_experiments.md` and focus on interpretation r
 - E2 added story-aware ROCStories polish and became the current best daily `ROC val` checkpoint, but the gain was modest.
 - E3 tested a more aggressive prompt-aligned synthetic-distillation branch. It was novel and correctly targeted opening adherence, but it still did not produce a decisive judged-quality jump.
 - E4 finally produced a clearer signal: the simple post-`EOT` masking ablation helped, but the heavier continuation-weighted follow-up stages did not extend that gain.
+- E5 added a synthetic continuation-aware backup line. It produced the highest local judge score so far in Stage 1, but with a severe `ppl` regression, and the recovery stage gave up that judge gain while only partly repairing token-level fit.
 
 ## What is safe to claim
 
 - The exploration was real, multi-stage, and evidence-based.
 - Better data and better sampling improved token-level fit.
 - A simple training-target cleanup mattered: masking spillover after the story `EOT` helped more than the heavier continuation-weighted stages that followed.
+- Synthetic continuation-aware polish can raise the local judge, but the current E5 version did so in an unstable way that badly hurt token-level fit.
 - For this small model, improving `ppl` turned out to be easier than improving judged story quality.
 - The strongest practical checkpoint so far is `e4-posteot-mask-openai`, because it improved both token-level fit and the local judge without needing the later E4 stages.
 
@@ -27,6 +29,7 @@ It should stay lighter than `task2_experiments.md` and focus on interpretation r
 - Old `r19` remains the historical Task 1 reference, but it is not a fair baseline on the new `ROC val`.
 - E3 should not be oversold. It was a meaningful aggressive experiment, but it did not clearly beat E2.
 - The later E4 stages should also not be oversold. Continuation weighting, ending boost, and short recovery were informative ablations, but they did not beat the simpler Step-1 masking result.
+- E5 also needs careful framing. Stage 1 may be useful as a clue about what the judge likes, but it is not a clean winner because its `ppl` regressed sharply; Stage 2 recovered some fit but lost the quality gain.
 - The local automatic judge is only a proxy for the final evaluation; it is useful, but not the official private-test scorer.
 
 ## Failure pattern summary
@@ -41,6 +44,7 @@ It should stay lighter than `task2_experiments.md` and focus on interpretation r
 The main bottleneck is no longer simply dataset choice.
 The deeper problem is that the model still struggles with prompt-conditioned continuation: turning an opening sentence into a compact, coherent, naturally ending short story.
 E4 suggests one concrete part of that problem was real training noise from cross-story spillover. Cleaning that up helped; more aggressive continuation reweighting did not yet produce an additional win.
+E5 suggests a second clue: synthetic continuation-aware training can move the local judge, but the present recipe is too distribution-shifting to keep the model well calibrated on standard token-level fit.
 
 ## If writing the report now
 
@@ -56,4 +60,4 @@ Main Task 2 arc:
 
 If experimentation continues, the next useful branch should change the training target more directly around opening-to-story continuation rather than only changing the source corpus again.
 This round, that direction was tested: story-bounded masking worked best, while the heavier continuation-weighted stages did not surpass it.
-The synthetic backup route should still stay separate in reporting: it is the next comparison line, but the real-data bar to beat is now `e4-posteot-mask-openai`, not E2.
+The synthetic backup route should still stay separate in reporting: it surfaced an interesting judge-side gain, but the real-data bar to beat remains `e4-posteot-mask-openai` until that gain can be retained without the large `ppl` penalty.

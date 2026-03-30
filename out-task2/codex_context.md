@@ -29,6 +29,8 @@
 - Confirmed from source: `scripts/task2_generate_and_score.py` now accepts judge credentials from `QWEN_API_KEY`, `DASHSCOPE_API_KEY`, or `OPENAI_API_KEY`, with `OPENAI_BASE_URL` / `OPENAI_MODEL` fallback support for OpenAI-compatible scoring endpoints.
 - Confirmed from `out-task2/results.csv`: `e4-posteot-mask-openai` improved to `avg_loss / ppl = 3.165 / 23.70` with local mean judge `2.1`, outperforming both E2 and the later E4 stages.
 - Confirmed from `out-task2/results.csv`: the heavier E4 stages did not beat Step 1; `e4-continuation-weighted-openai` returned to judge `2.0`, while `e4-ending-boost-openai` and `e4-recovery-openai` dropped to `1.9`.
+- Confirmed from `out-task2/results.csv`: `e5-synth-continuation-weighted-openai` reached the highest local judge so far at `2.4`, but with a very large token-level regression to `avg_loss / ppl = 3.796 / 44.51`.
+- Confirmed from `out-task2/results.csv`: `e5-recovery-openai` partially repaired token-level fit to `3.234 / 25.39`, but its local judge fell back to `2.0`, so E5 did not produce a clean overall win over `e4-posteot-mask-openai`.
 - Known limitation: local judge scores remain stuck around `2.0`; improving `ppl` has been easier than improving judged story quality.
 - Workflow rule: for every Task 2 / Task 3 turn, first classify the request, then read `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, and the relevant raw source files before implementation, debugging, evaluation, or report writing.
 - Workflow rule: if a future request is not Task 2 / Task 3, use `docs/codex_context.md` as the general repository context file and create it from a minimal template if it is missing.
@@ -130,15 +132,27 @@
   `avg_loss / ppl`: `3.172 / 23.86`
   `judge score`: `1.9`
   Notes: recovery did not recover the Step-1 judged-quality gain
+- `run_name`: `e5-synth-continuation-weighted-openai`
+  `out_dir`: `out-task2-e5-synth-continuation-weighted`
+  `dataset_recipe`: `Synthetic continuation-aware polish`
+  `avg_loss / ppl`: `3.796 / 44.51`
+  `judge score`: `2.4`
+  Notes: highest local judge so far, but token-level regression is severe
+- `run_name`: `e5-recovery-openai`
+  `out_dir`: `out-task2-e5-recovery`
+  `dataset_recipe`: `Synthetic continuation-aware polish + short real ROC recovery`
+  `avg_loss / ppl`: `3.234 / 25.39`
+  `judge score`: `2.0`
+  Notes: recovery improved over raw E5 Stage 1 `ppl`, but did not preserve the judge gain
 
 # Current Status
 - Completed: E1 curriculum, E2 story-aware polish, E3 corrected synthetic-distillation implementation and evaluation; explicit repository-local context workflow was recorded for Task 2 / Task 3.
 - Completed this round: feedback-aligned continuation-aware training scaffolding was added to `train.py`, `data/rocstories/prepare.py`, and `data/rocstories_synth/prepare.py`, plus four sequential E4 configs.
 - Completed this round: the full four-stage E4 main line was trained and evaluated on `ROC val`; only `e4-posteot-mask-openai` clearly improved over E2.
-- Completed this round: the E5 synthetic backup route was added as a separate two-stage config chain.
+- Completed this round: the E5 synthetic backup route was trained and evaluated end to end.
 - Completed this round: `scripts/task2_generate_and_score.py` was updated so remote scoring can fall back to `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` instead of requiring `QWEN_API_KEY`.
-- In progress: compare the E5 synthetic backup line against the new E4 Step-1 bar instead of against E2 alone.
-- Current blocker: heavier continuation-weighted supervision still did not beat the simpler post-`EOT` masking ablation on judged story quality.
+- In progress: decide whether to value E5 Stage 1's higher local judge enough to shortlist it despite the very poor `ppl`, or to keep `e4-posteot-mask-openai` as the cleaner balanced leader.
+- Current blocker: no run has yet improved both local judged quality and token-level fit at the same time beyond `e4-posteot-mask-openai`.
 
 # Decisions
 - 2026-03-30 | Use new `ROC val` for daily Task 2 comparison | Avoid daily tuning on public test | `data/rocstories/prepare.py`, `scripts/task2_generate_and_score.py`
@@ -149,15 +163,17 @@
 - 2026-03-30 | Keep E5 as a separate synthetic backup line rather than mixing it into E4 | The main uncertainty is still on real ROCStories; synthetic continuation-aware polish should stay as a fallback comparison, not the first branch to run | `config/train_rocstories_synth_task2_e5_continuation_weighted.py`, `config/train_rocstories_task2_e5_recovery.py`
 - 2026-03-31 | Let the Task 2 scorer fall back to `OPENAI_*` env vars for judge calls | Remote runs were failing when only `OPENAI_API_KEY` was exported even though the judge endpoint is OpenAI-compatible | `scripts/task2_generate_and_score.py` | Keep secrets in env vars only; do not persist raw keys in repo docs
 - 2026-03-31 | Promote `e4-posteot-mask-openai` to the current best daily checkpoint and treat later E4 stages as non-winning ablations | Step 1 improved both `ppl` and local judge, while continuation weighting / ending boost / recovery did not extend the gain | `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md` | Keep E5 as the next comparison line, but compare it to E4 Step 1 rather than to E2 alone
+- 2026-03-31 | Treat E5 as a mixed-result comparison line rather than the new default winner | Stage 1 produced the best local judge (`2.4`) but with extreme `ppl` regression; Stage 2 improved `ppl` but lost the judge gain | `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md` | Keep `e4-posteot-mask-openai` as the clean balanced leader until a branch beats it on both quality and stability
 
 # Verification
 - Already run: `data/rocstories/prepare.py`, E1 / E2 / E3 training branches, the full four-stage E4 line, `task2_generate_and_score.py`, local `py_compile` on the new E4-related Python files, local `py_compile` on the updated Task 2 scorer env-fallback patch
 - Result: `e4-posteot-mask-openai` reached `3.165 / 23.70 / 2.1`; `e4-continuation-weighted-openai` reached `3.166 / 23.72 / 2.0`; `e4-ending-boost-openai` reached `3.172 / 23.85 / 1.9`; `e4-recovery-openai` reached `3.172 / 23.86 / 1.9`
+- Result: `e5-synth-continuation-weighted-openai` reached `3.796 / 44.51 / 2.4`; `e5-recovery-openai` reached `3.234 / 25.39 / 2.0`
 - Unverified risk: with `block_size = 96` and ROCStories mean length around `52`, many story-start windows may include post-`EOT` spill into the next story; this has not yet been isolated by an ablation.
 
 # Next Steps
 - Next 1: on every future Task 2 / Task 3 turn, read this file and `out-task2/task2_working_notes.md` before new work.
 - Next 2: after reading context files, re-read the relevant raw source/config/eval files before each new experiment, bug fix, or report update.
 - Next 3: use `e4-posteot-mask-openai` as the new daily comparison bar for future real-data Task 2 work.
-- Next 4: evaluate whether E5 can beat `e4-posteot-mask-openai`; if not, keep the simpler spillover-mask result as the submission shortlist leader.
-- Next 5: if experimentation continues beyond E5, preserve post-`EOT` masking as the baseline fix and be cautious about heavier continuation weighting unless a new variant beats Step 1.
+- Next 4: inspect E5 Stage 1 samples closely before deciding whether its higher local judge is meaningful enough to justify shortlist attention despite the poor `ppl`.
+- Next 5: if experimentation continues beyond E5, preserve post-`EOT` masking as the baseline fix and look for variants that keep or improve the E5 judge gain without the large token-level regression.
