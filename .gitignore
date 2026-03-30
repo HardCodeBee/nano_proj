@@ -14,8 +14,15 @@ data/rocstories_synth/*.bin
 data/rocstories_synth/*_story_starts.npy
 data/rocstories_synth/*_story_lengths.npy
 data/rocstories_synth/*_first_sentence_lengths.npy
+data/rocstories_synth/accepted*.json
+data/rocstories_synth/rejected*.json
+data/rocstories_synth/accepted*.jsonl
+data/rocstories_synth/rejected*.jsonl
 data/rocstories_synth/val_full.txt
 data/rocstories_synth/dataset_stats.json
+data/tinystories/*.bin
+data/tinystories/val_full.txt
+data/tinystories/dataset_stats.json
 data/shakespeare_char/input.txt
 data/shakespeare_char/meta.pkl
 data/shakespeare_char/*.bin
