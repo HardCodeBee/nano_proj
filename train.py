@@ -39,8 +39,9 @@ log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
-init_from = 'scratch' # 'scratch' or 'resume' or 'resume_path' or 'gpt2*'
-resume_ckpt_path = '' # used only when init_from='resume_path'
+init_from = 'scratch' # 'scratch' or 'resume' or 'resume_path' or 'warmstart_path' or 'gpt2*'
+resume_ckpt_path = '' # used when init_from='resume_path' or 'warmstart_path'
+warmstart_copy_last_block = True # when expanding depth, copy the last source block into newly added blocks
 # wandb logging
 wandb_log = False # disabled by default
 wandb_project = 'owt'
@@ -296,6 +297,84 @@ def compute_loss_for_batch(model, inputs, targets, start_indices, split):
     return logits, weighted_loss
 
 
+def sanitize_state_dict_keys(state_dict):
+    cleaned = {}
+    unwanted_prefix = '_orig_mod.'
+    for key, value in state_dict.items():
+        if key.startswith(unwanted_prefix):
+            key = key[len(unwanted_prefix):]
+        cleaned[key] = value
+    return cleaned
+
+
+def build_warmstart_state(checkpoint, target_n_layer):
+    source_state = sanitize_state_dict_keys(checkpoint['model'])
+    checkpoint_model_args = checkpoint.get('model_args', {})
+    source_n_layer = checkpoint_model_args.get('n_layer')
+    copied_block_count = 0
+
+    if (
+        warmstart_copy_last_block
+        and isinstance(source_n_layer, int)
+        and source_n_layer > 0
+        and target_n_layer > source_n_layer
+    ):
+        last_prefix = f'transformer.h.{source_n_layer - 1}.'
+        block_keys = [key for key in source_state.keys() if key.startswith(last_prefix)]
+        for dst_idx in range(source_n_layer, target_n_layer):
+            dst_prefix = f'transformer.h.{dst_idx}.'
+            for key in block_keys:
+                mapped_key = dst_prefix + key[len(last_prefix):]
+                source_state[mapped_key] = source_state[key].clone()
+            copied_block_count += 1
+
+    return source_state, copied_block_count
+
+
+def warmstart_model_from_checkpoint(model, checkpoint):
+    source_state, copied_block_count = build_warmstart_state(checkpoint, model.config.n_layer)
+    model_state = model.state_dict()
+    exact_loaded = 0
+    prefix_loaded = []
+    skipped = []
+
+    with torch.no_grad():
+        for key, target in model_state.items():
+            source = source_state.get(key)
+            if source is not None and source.shape == target.shape:
+                target.copy_(source.to(target.device))
+                exact_loaded += 1
+                continue
+
+            if key == 'transformer.wpe.weight':
+                source_wpe = source_state.get(key)
+                if (
+                    source_wpe is not None
+                    and source_wpe.ndim == 2
+                    and target.ndim == 2
+                    and source_wpe.shape[1] == target.shape[1]
+                ):
+                    copy_rows = min(source_wpe.shape[0], target.shape[0])
+                    target[:copy_rows].copy_(source_wpe[:copy_rows].to(target.device))
+                    prefix_loaded.append(f'{key}[:{copy_rows}]')
+                    continue
+
+            skipped.append(key)
+
+    print(
+        "Warm-start load summary: "
+        f"{exact_loaded} exact tensors, {len(prefix_loaded)} prefix-copied tensors, "
+        f"{len(skipped)} fresh tensors, copied_extra_blocks={copied_block_count}"
+    )
+    if prefix_loaded:
+        print("Warm-start prefix copies:", ", ".join(prefix_loaded))
+    if skipped:
+        preview = ", ".join(skipped[:8])
+        if len(skipped) > 8:
+            preview += ", ..."
+        print(f"Warm-start fresh tensors: {preview}")
+
+
 def get_batch(split):
     # We recreate np.memmap every batch to avoid a memory leak, as per
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
@@ -363,6 +442,23 @@ elif init_from in ('resume', 'resume_path'):
     model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num']
     best_val_loss = checkpoint['best_val_loss']
+elif init_from == 'warmstart_path':
+    ckpt_path = resume_ckpt_path
+    if not ckpt_path:
+        raise ValueError("resume_ckpt_path must be set when init_from='warmstart_path'")
+    print(f"Warm-starting model from {ckpt_path}")
+    checkpoint = torch.load(ckpt_path, map_location=device)
+    checkpoint_model_args = checkpoint['model_args']
+    if meta_vocab_size is None:
+        model_args['vocab_size'] = checkpoint_model_args.get('vocab_size', 50304)
+    else:
+        model_args['vocab_size'] = meta_vocab_size
+    gptconf = GPTConfig(**model_args)
+    model = GPT(gptconf)
+    warmstart_model_from_checkpoint(model, checkpoint)
+    print("Warm start resets optimizer state, iter_num, and best_val_loss for the new run.")
+    iter_num = 0
+    best_val_loss = 1e9
 elif init_from.startswith('gpt2'):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
     # initialize from OpenAI GPT-2 weights
@@ -469,7 +565,7 @@ while True:
                 }
                 print(f"saving checkpoint to {out_dir}")
                 torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
-    if iter_num == 0 and eval_only:
+    if eval_only and iter_num % eval_interval == 0:
         break
 
     # forward backward update, with optional gradient accumulation to simulate larger batch size

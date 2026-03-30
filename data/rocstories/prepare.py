@@ -47,6 +47,11 @@ def parse_args():
         help="Fraction of the official train split to hold out as validation.",
     )
     parser.add_argument("--seed", type=int, default=SPLIT_SEED)
+    parser.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help="Rebuild story-boundary metadata from existing train.bin / val.bin without downloading the dataset.",
+    )
     return parser.parse_args()
 
 
@@ -89,9 +94,58 @@ def write_eval_text(path, stories):
         handle.write("\n")
 
 
+def rebuild_metadata_from_bin(bin_path):
+    token_stream = np.memmap(bin_path, dtype=np.uint16, mode="r")
+    eot_positions = np.flatnonzero(token_stream == ENC.eot_token)
+    if eot_positions.size == 0:
+        raise ValueError(f"No EOT token boundaries found in {bin_path}")
+
+    starts = np.empty(eot_positions.size, dtype=np.int64)
+    starts[0] = 0
+    if eot_positions.size > 1:
+        starts[1:] = eot_positions[:-1] + 1
+    lengths = (eot_positions.astype(np.int64) - starts) + 1
+
+    first_sentence_lengths = np.empty(eot_positions.size, dtype=np.int64)
+    for idx, (start, end) in enumerate(zip(starts.tolist(), eot_positions.tolist())):
+        story_ids = token_stream[start:end].astype(np.int64, copy=False)
+        story_text = ENC.decode(story_ids.tolist())
+        first_sentence = extract_first_sentence(story_text)
+        first_sentence_lengths[idx] = len(ENC.encode_ordinary(first_sentence)) if first_sentence else 0
+
+    return starts, lengths, first_sentence_lengths
+
+
+def save_story_metadata(out_dir, split, starts, lengths, first_sentence_lengths):
+    starts_path = out_dir / f"{split}_story_starts.npy"
+    lengths_path = out_dir / f"{split}_story_lengths.npy"
+    first_sentence_lengths_path = out_dir / f"{split}_first_sentence_lengths.npy"
+    np.save(starts_path, starts)
+    np.save(lengths_path, lengths)
+    np.save(first_sentence_lengths_path, first_sentence_lengths)
+    print(
+        "Saved story metadata to "
+        f"{starts_path.name}, {lengths_path.name}, and {first_sentence_lengths_path.name}"
+    )
+
+
 if __name__ == "__main__":
     args = parse_args()
     out_dir = Path(__file__).resolve().parent
+
+    if args.metadata_only:
+        print("Rebuilding ROCStories metadata from existing token streams...")
+        for split in ("train", "val"):
+            bin_path = out_dir / f"{split}.bin"
+            if not bin_path.exists():
+                raise FileNotFoundError(f"Missing token stream for metadata-only rebuild: {bin_path}")
+            starts, lengths, first_sentence_lengths = rebuild_metadata_from_bin(bin_path)
+            save_story_metadata(out_dir, split, starts, lengths, first_sentence_lengths)
+            print(
+                f"{split}: rebuilt {len(lengths):,} stories, "
+                f"mean/story={float(lengths.mean()):.2f}, max={int(lengths.max())}"
+            )
+        raise SystemExit(0)
 
     dataset = load_dataset(args.dataset_id)
     train_split = dataset["train"].train_test_split(
@@ -160,20 +214,11 @@ if __name__ == "__main__":
             idx += len(arr_batch)
         arr.flush()
 
-        starts_path = out_dir / f"{split}_story_starts.npy"
-        lengths_path = out_dir / f"{split}_story_lengths.npy"
-        first_sentence_lengths_path = out_dir / f"{split}_first_sentence_lengths.npy"
-        np.save(starts_path, starts)
-        np.save(lengths_path, lengths)
-        np.save(first_sentence_lengths_path, first_sentence_lengths)
+        save_story_metadata(out_dir, split, starts, lengths, first_sentence_lengths)
 
         print(
             f"{split}.bin: {split_stats['tokens_total']:,} tokens, "
             f"mean/story={split_stats['mean']:.2f}, p95={split_stats['p95']}"
-        )
-        print(
-            "Saved story metadata to "
-            f"{starts_path.name}, {lengths_path.name}, and {first_sentence_lengths_path.name}"
         )
 
     locked_test_tokenized = locked_test.map(
