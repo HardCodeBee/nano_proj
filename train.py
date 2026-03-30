@@ -24,6 +24,7 @@ from contextlib import nullcontext
 
 import numpy as np
 import torch
+from torch.nn import functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
@@ -52,6 +53,12 @@ block_size = 256 # context of up to 256 previous characters
 sampling_mode = 'random' # random, story_start, opening_biased, mixed
 story_sampling_prob = 0.7 # for mixed mode: probability of drawing story-aware windows
 opening_window_tokens = 24 # max offset from a story start for opening-biased sampling
+loss_mode = 'standard' # standard, continuation_weighted
+prompt_weight = 0.5 # relative weight for tokens inside the opening sentence
+continuation_weight = 2.0 # relative weight for continuation tokens after the opening sentence
+ending_weight = 1.25 # extra multiplier for the final ending_tokens continuation targets
+ending_tokens = 16 # number of continuation targets near story end to boost
+mask_after_story_end = False # ignore targets that spill past the current story's first EOT
 # model
 n_layer = 12
 n_head = 12
@@ -123,16 +130,18 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 data_dir = os.path.join('data', dataset)
 story_metadata_cache = {}
 story_sampling_warning_printed = False
+EOT_TOKEN_ID = 50256
 
 
-def load_story_metadata(split):
+def load_story_metadata(split, require_first_sentence=False):
     global story_sampling_warning_printed
-    cache_key = (data_dir, split)
+    cache_key = (data_dir, split, require_first_sentence)
     if cache_key in story_metadata_cache:
         return story_metadata_cache[cache_key]
 
     starts_path = os.path.join(data_dir, f'{split}_story_starts.npy')
     lengths_path = os.path.join(data_dir, f'{split}_story_lengths.npy')
+    first_sentence_lengths_path = os.path.join(data_dir, f'{split}_first_sentence_lengths.npy')
     if not (os.path.exists(starts_path) and os.path.exists(lengths_path)):
         if sampling_mode != 'random' and split == 'train' and master_process and not story_sampling_warning_printed:
             print(
@@ -145,7 +154,22 @@ def load_story_metadata(split):
 
     starts = np.load(starts_path).astype(np.int64, copy=False)
     lengths = np.load(lengths_path).astype(np.int64, copy=False)
-    story_metadata_cache[cache_key] = {'starts': starts, 'lengths': lengths}
+    if require_first_sentence:
+        if not os.path.exists(first_sentence_lengths_path):
+            raise FileNotFoundError(
+                f"Missing continuation metadata for split '{split}': {first_sentence_lengths_path}. "
+                "Re-run the dataset prepare script before using continuation-weighted loss."
+            )
+        first_sentence_lengths = np.load(first_sentence_lengths_path).astype(np.int64, copy=False)
+    elif os.path.exists(first_sentence_lengths_path):
+        first_sentence_lengths = np.load(first_sentence_lengths_path).astype(np.int64, copy=False)
+    else:
+        first_sentence_lengths = None
+    story_metadata_cache[cache_key] = {
+        'starts': starts,
+        'lengths': lengths,
+        'first_sentence_lengths': first_sentence_lengths,
+    }
     return story_metadata_cache[cache_key]
 
 
@@ -199,6 +223,79 @@ def choose_start_indices(split, data_length):
     raise ValueError(f"Unknown sampling_mode: {sampling_mode}")
 
 
+def prepare_targets_and_weights(start_indices, targets, split):
+    apply_story_end_mask = mask_after_story_end or loss_mode == 'continuation_weighted'
+    if not apply_story_end_mask:
+        if loss_mode != 'standard':
+            raise ValueError(f"Unknown loss_mode: {loss_mode}")
+        return targets, None
+
+    metadata = load_story_metadata(split, require_first_sentence=(loss_mode == 'continuation_weighted'))
+    if metadata is None:
+        raise ValueError(
+            f"Story-bounded loss requested for split '{split}', but story metadata is unavailable in {data_dir}."
+        )
+
+    starts = metadata['starts']
+    lengths = metadata['lengths']
+    first_sentence_lengths = metadata['first_sentence_lengths']
+    if len(starts) == 0:
+        return targets, None
+
+    masked_targets = targets.clone()
+    weights = None
+    if loss_mode == 'continuation_weighted':
+        weights = torch.zeros_like(masked_targets, dtype=torch.float32)
+    elif loss_mode != 'standard':
+        raise ValueError(f"Unknown loss_mode: {loss_mode}")
+
+    story_ids = np.searchsorted(starts, start_indices, side='right') - 1
+    story_ids = np.clip(story_ids, 0, len(starts) - 1)
+    seq_len = masked_targets.size(1)
+
+    for row, story_id in enumerate(story_ids.tolist()):
+        start_idx = int(start_indices[row])
+        story_start = int(starts[story_id])
+        story_end = story_start + int(lengths[story_id]) - 1
+        valid_len = max(0, min(seq_len, story_end - start_idx))
+
+        if valid_len < seq_len:
+            masked_targets[row, valid_len:] = -1
+
+        if weights is None:
+            continue
+
+        prompt_end = story_start + int(first_sentence_lengths[story_id]) - 1
+        prompt_valid_len = max(0, min(valid_len, prompt_end - start_idx))
+
+        if prompt_valid_len > 0:
+            weights[row, :prompt_valid_len] = prompt_weight
+        if valid_len > prompt_valid_len:
+            weights[row, prompt_valid_len:valid_len] = continuation_weight
+            if ending_weight != 1.0 and ending_tokens > 0:
+                tail_start = max(prompt_valid_len, valid_len - ending_tokens)
+                weights[row, tail_start:valid_len] *= ending_weight
+
+    return masked_targets, weights
+
+
+def compute_loss_for_batch(model, inputs, targets, start_indices, split):
+    effective_targets, loss_weights = prepare_targets_and_weights(start_indices, targets, split)
+    logits, standard_loss = model(inputs, effective_targets)
+    if loss_weights is None:
+        return logits, standard_loss
+
+    per_token_loss = F.cross_entropy(
+        logits.view(-1, logits.size(-1)),
+        effective_targets.view(-1),
+        ignore_index=-1,
+        reduction='none',
+    ).view_as(effective_targets)
+    loss_weights = loss_weights.to(per_token_loss.dtype)
+    weighted_loss = (per_token_loss * loss_weights).sum() / loss_weights.sum().clamp_min(1.0)
+    return logits, weighted_loss
+
+
 def get_batch(split):
     # We recreate np.memmap every batch to avoid a memory leak, as per
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
@@ -214,7 +311,7 @@ def get_batch(split):
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
     else:
         x, y = x.to(device), y.to(device)
-    return x, y
+    return x, y, ix
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
@@ -307,9 +404,9 @@ def estimate_loss():
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split)
+            X, Y, ix = get_batch(split)
             with ctx:
-                logits, loss = model(X, Y)
+                logits, loss = compute_loss_for_batch(model, X, Y, ix, split)
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
@@ -335,7 +432,7 @@ if wandb_log and master_process:
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # training loop
-X, Y = get_batch('train') # fetch the very first batch
+X, Y, ix = get_batch('train') # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
@@ -385,10 +482,10 @@ while True:
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
         with ctx:
-            logits, loss = model(X, Y)
+            logits, loss = compute_loss_for_batch(model, X, Y, ix, 'train')
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = get_batch('train')
+        X, Y, ix = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient

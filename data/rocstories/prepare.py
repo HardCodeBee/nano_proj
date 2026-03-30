@@ -4,7 +4,9 @@ Convert ROCStories into nanoGPT-ready local artifacts with a three-layer split:
 - train.bin: official train minus a small held-out validation slice
 - val.bin: held-out slice from the official train split, used for checkpoint selection
 - train_story_starts.npy / train_story_lengths.npy: story boundary metadata for story-aware sampling
+- train_first_sentence_lengths.npy: token lengths of the opening sentence for continuation-aware weighting
 - val_story_starts.npy / val_story_lengths.npy: validation metadata in the same format
+- val_first_sentence_lengths.npy: validation opening-sentence token lengths
 - val_full.txt: blank-line-separated validation stories for day-to-day paragraph eval
 - locked_test.txt: the untouched official public test split, reserved for occasional final checks
 - dataset_stats.json: split-level token-length statistics and split metadata
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -48,9 +51,24 @@ def parse_args():
 
 
 def process(example, text_key):
-    ids = ENC.encode_ordinary(example[text_key])
+    text = example[text_key]
+    ids = ENC.encode_ordinary(text)
     ids.append(ENC.eot_token)
-    return {"ids": ids, "len": len(ids)}
+    first_sentence = extract_first_sentence(text)
+    first_sentence_len = len(ENC.encode_ordinary(first_sentence)) if first_sentence else 0
+    return {"ids": ids, "len": len(ids), "first_sentence_len": first_sentence_len}
+
+
+def split_sentences(text):
+    normalized = " ".join(str(text).replace("\n", " ").split()).strip()
+    if not normalized:
+        return []
+    return [segment.strip() for segment in re.split(r"(?<=[.!?])\s+", normalized) if segment.strip()]
+
+
+def extract_first_sentence(text):
+    sentences = split_sentences(text)
+    return sentences[0] if sentences else " ".join(str(text).split()).strip()
 
 
 def summarize_lengths(lengths):
@@ -123,6 +141,7 @@ if __name__ == "__main__":
         stats["splits"][split] = split_stats
         lengths = np.array(tokenized_split["len"], dtype=np.int64)
         starts = np.cumsum(np.concatenate(([0], lengths[:-1])), dtype=np.int64)
+        first_sentence_lengths = np.array(tokenized_split["first_sentence_len"], dtype=np.int64)
 
         filename = out_dir / f"{split}.bin"
         arr_len = split_stats["tokens_total"]
@@ -143,14 +162,19 @@ if __name__ == "__main__":
 
         starts_path = out_dir / f"{split}_story_starts.npy"
         lengths_path = out_dir / f"{split}_story_lengths.npy"
+        first_sentence_lengths_path = out_dir / f"{split}_first_sentence_lengths.npy"
         np.save(starts_path, starts)
         np.save(lengths_path, lengths)
+        np.save(first_sentence_lengths_path, first_sentence_lengths)
 
         print(
             f"{split}.bin: {split_stats['tokens_total']:,} tokens, "
             f"mean/story={split_stats['mean']:.2f}, p95={split_stats['p95']}"
         )
-        print(f"Saved story metadata to {starts_path.name} and {lengths_path.name}")
+        print(
+            "Saved story metadata to "
+            f"{starts_path.name}, {lengths_path.name}, and {first_sentence_lengths_path.name}"
+        )
 
     locked_test_tokenized = locked_test.map(
         process,

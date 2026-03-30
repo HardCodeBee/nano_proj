@@ -2,18 +2,35 @@
   "dataset_id": "mintujupally/ROCStories",
   "tokenizer": "gpt2",
   "separator_token_id": 50256,
+  "split_policy": {
+    "train_source": "official_train",
+    "val_source": "official_train",
+    "val_fraction": 0.05,
+    "locked_test_source": "official_test",
+    "seed": 2027
+  },
   "splits": {
     "train": {
-      "count": 78528,
-      "mean": 52.352562143439286,
+      "count": 74601,
+      "mean": 52.34520984973392,
       "median": 52.0,
       "p90": 65,
       "p95": 69,
       "max": 109,
-      "stories": 78528,
-      "tokens_total": 4111142
+      "stories": 74601,
+      "tokens_total": 3905005
     },
     "val": {
+      "count": 3927,
+      "mean": 52.49223325693914,
+      "median": 52.0,
+      "p90": 66,
+      "p95": 69,
+      "max": 82,
+      "stories": 3927,
+      "tokens_total": 206137
+    },
+    "locked_test": {
       "count": 19633,
       "mean": 52.341007487393675,
       "median": 52.0,

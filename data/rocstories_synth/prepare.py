@@ -7,7 +7,9 @@ The output mirrors the ROCStories local protocol:
 - train.bin
 - val.bin
 - train_story_starts.npy / train_story_lengths.npy
+- train_first_sentence_lengths.npy
 - val_story_starts.npy / val_story_lengths.npy
+- val_first_sentence_lengths.npy
 - val_full.txt
 - dataset_stats.json
 """
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +55,19 @@ def encode_story(story: str) -> list[int]:
     return ids
 
 
+def split_sentences(text: str) -> list[str]:
+    normalized = " ".join(text.replace("\n", " ").split()).strip()
+    if not normalized:
+        return []
+    return [segment.strip() for segment in re.split(r"(?<=[.!?])\s+", normalized) if segment.strip()]
+
+
+def first_sentence_token_length(story: str) -> int:
+    sentences = split_sentences(story)
+    first_sentence = sentences[0] if sentences else " ".join(story.split()).strip()
+    return len(ENC.encode_ordinary(first_sentence)) if first_sentence else 0
+
+
 def write_eval_text(path: Path, stories: list[str]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         handle.write("\n\n".join(story.strip() for story in stories if story.strip()))
@@ -62,6 +78,7 @@ def write_split(out_dir: Path, split_name: str, stories: list[str], stats: dict)
     encoded = [encode_story(story) for story in stories]
     lengths = np.array([len(ids) for ids in encoded], dtype=np.int64)
     starts = np.cumsum(np.concatenate(([0], lengths[:-1])), dtype=np.int64) if len(lengths) else np.array([], dtype=np.int64)
+    first_sentence_lengths = np.array([first_sentence_token_length(story) for story in stories], dtype=np.int64)
     total_tokens = int(np.sum(lengths, dtype=np.uint64))
 
     stats["splits"][split_name] = summarize_lengths(lengths)
@@ -79,6 +96,7 @@ def write_split(out_dir: Path, split_name: str, stories: list[str], stats: dict)
 
     np.save(out_dir / f"{split_name}_story_starts.npy", starts)
     np.save(out_dir / f"{split_name}_story_lengths.npy", lengths)
+    np.save(out_dir / f"{split_name}_first_sentence_lengths.npy", first_sentence_lengths)
 
     print(
         f"{split_name}.bin: {total_tokens:,} tokens, "
