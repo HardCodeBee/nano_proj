@@ -14,6 +14,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - E4 finally produced a clearer signal: the simple post-`EOT` masking ablation helped, but the heavier continuation-weighted follow-up stages did not extend that gain.
 - E5 added a synthetic continuation-aware backup line. It produced the highest local judge score so far in Stage 1, but with a severe `ppl` regression, and the recovery stage gave up that judge gain while only partly repairing token-level fit.
 - E6 and E7 then tested two different follow-up ideas on real ROCStories: broader mixed sampling and a near-capacity warm-start expansion. Neither beat the simpler E4 Step-1 checkpoint.
+- The next worthwhile follow-up is no longer another E6/E7-style branch. The sharper test is whether E5's proxy-judge gain can survive a real-data recovery that keeps story-boundary masking on.
 
 ## What is safe to claim
 
@@ -32,6 +33,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - E3 should not be oversold. It was a meaningful aggressive experiment, but it did not clearly beat E2.
 - The later E4 stages should also not be oversold. Continuation weighting, ending boost, and short recovery were informative ablations, but they did not beat the simpler Step-1 masking result.
 - E5 also needs careful framing. Stage 1 may be useful as a clue about what the judge likes, but it is not a clean winner because its `ppl` regressed sharply; Stage 2 recovered some fit but lost the quality gain.
+- A new masked E5 recovery should still be framed as a targeted salvage test, not as an already-validated improvement.
 - E6 and E7 should now be framed as negative or neutral follow-ups, not pending branches. They were useful ablations, but they did not beat `e4-posteot-mask-openai`.
 - The local automatic judge is only a proxy for the final evaluation; it is useful, but not the official private-test scorer.
 
@@ -50,6 +52,7 @@ E4 suggests one concrete part of that problem was real training noise from cross
 E5 suggests a second clue: synthetic continuation-aware training can move the local judge, but the present recipe is too distribution-shifting to keep the model well calibrated on standard token-level fit.
 E6 adds a third clue: the E4 gain was not robust to restoring broader mixed-sampling coverage, so part of that gain may depend on the story-start-heavy training distribution rather than on a universally better objective.
 E7 adds a fourth clue: a near-capacity depth/context expansion by itself is not enough under the current recipe and budget; the bottleneck is not solved just by making the model slightly larger.
+That leaves one particularly concrete unresolved question: whether the old E5 recovery recipe failed partly because it abandoned the post-`EOT` masking cleanup instead of only because the synthetic distribution shift was too strong.
 
 ## If writing the report now
 
@@ -68,4 +71,4 @@ Main Task 2 arc:
 If experimentation continues, the next useful branch should change the training target more directly around opening-to-story continuation rather than only changing the source corpus again.
 This direction has now been tested more fully: story-bounded masking worked best, while the heavier continuation-weighted stages, the broader mixed-sampling follow-up, and the current near-capacity warm-start expansion all failed to surpass it.
 The synthetic backup route should still stay separate in reporting: it surfaced an interesting judge-side gain, but the real-data bar to beat remains `e4-posteot-mask-openai` until that gain can be retained without the large `ppl` penalty.
-The next execution plan should no longer treat E6 or E7 as pending. Instead, it should explain why the E4 Step-1 gain disappeared under broader sampling and whether the only judge-moving line, E5, can be stabilized without breaking token-level fit.
+The next execution plan should no longer treat E6 or E7 as pending. Instead, it should explain why the E4 Step-1 gain disappeared under broader sampling and whether the only judge-moving line, E5, can be stabilized without breaking token-level fit, starting with a masked real-data recovery rather than another fresh architecture branch.
