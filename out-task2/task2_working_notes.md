@@ -52,3 +52,4 @@ Main Task 2 arc:
 
 If experimentation continues, the next useful branch should change the training target more directly around opening-to-story continuation rather than only changing the source corpus again.
 This round, that direction has been translated into code scaffolding: story-bounded masking, continuation-aware weighting hooks, and a staged E4 config chain are ready to test.
+The synthetic backup route should stay separate in reporting: it is a fallback comparison line, not the default first branch to run.

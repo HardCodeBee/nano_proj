@@ -76,6 +76,12 @@
 - Path: `config/train_rocstories_task2_e4_recovery.py`
   Role: Step-4 short recovery-mix config
   Related items: `loss_mode = standard`, `sampling_mode = mixed`
+- Path: `config/train_rocstories_synth_task2_e5_continuation_weighted.py`
+  Role: E5 synthetic backup Stage-1 config
+  Related items: `dataset = rocstories_synth`, `loss_mode = continuation_weighted`
+- Path: `config/train_rocstories_task2_e5_recovery.py`
+  Role: E5 synthetic backup Stage-2 real-ROC recovery config
+  Related items: `dataset = rocstories`, `loss_mode = standard`
 
 # Latest Runs
 - `run_name`: `e1-tinystories-to-rocstories-openai`
@@ -100,7 +106,8 @@
 # Current Status
 - Completed: E1 curriculum, E2 story-aware polish, E3 corrected synthetic-distillation implementation and evaluation; explicit repository-local context workflow was recorded for Task 2 / Task 3.
 - Completed this round: feedback-aligned continuation-aware training scaffolding was added to `train.py`, `data/rocstories/prepare.py`, and `data/rocstories_synth/prepare.py`, plus four sequential E4 configs.
-- In progress: regenerate local dataset metadata and run the E4 sequence on remote GPU, with results flowing through `results.csv` first.
+- Completed this round: the E5 synthetic backup route was added as a separate two-stage config chain.
+- In progress: regenerate local dataset metadata and run the E4 main line on remote GPU first, with E5 held as the synthetic backup route if E4 stalls.
 - Current blocker: no branch has yet produced a clear jump in prompt-conditioned story quality.
 
 # Decisions
@@ -109,6 +116,7 @@
 - 2026-03-30 | Refocus E3 synthetic data toward opening adherence | Final scoring is closer to prompt-conditioned good-story generation than surface ROC-style imitation | `scripts/generate_rocstories_synthetic.py`, `prompts/task2_rocstyle_rewrite_prompt.txt`
 - 2026-03-30 | Adopt explicit repository-local externalized context workflow | Reduce reliance on conversation history and force each new turn to re-read context plus relevant source files before work | `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/decision_log.md`, `docs/codex_context.md`
 - 2026-03-30 | Implement the feedback-aligned E4 training path in code before new runs | The highest-value next test is to isolate post-`EOT` spillover and then move to continuation-weighted supervision instead of changing source data again | `train.py`, `data/rocstories/prepare.py`, `data/rocstories_synth/prepare.py`, `config/train_rocstories_task2_e4_*.py`
+- 2026-03-30 | Keep E5 as a separate synthetic backup line rather than mixing it into E4 | The main uncertainty is still on real ROCStories; synthetic continuation-aware polish should stay as a fallback comparison, not the first branch to run | `config/train_rocstories_synth_task2_e5_continuation_weighted.py`, `config/train_rocstories_task2_e5_recovery.py`
 
 # Verification
 - Already run: `data/rocstories/prepare.py`, E1 / E2 / E3 training branches, `task2_generate_and_score.py`, local `py_compile` on the new E4-related Python files
@@ -120,3 +128,4 @@
 - Next 2: after reading context files, re-read the relevant raw source/config/eval files before each new experiment, bug fix, or report update.
 - Next 3: prioritize a fast ablation that masks target tokens after the first `EOT` in story-start windows before moving to heavier continuation-weighted training changes.
 - Next 4: regenerate `rocstories` and `rocstories_synth` local artifacts so the new `*_first_sentence_lengths.npy` files exist before remote training.
+- Next 5: keep E4 and E5 remote run instructions separate so the synthetic backup route is only used if the real-data line stalls or clearly underperforms.
