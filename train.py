@@ -51,10 +51,14 @@ dataset = 'openwebtext'
 gradient_accumulation_steps = 1
 batch_size = 64
 block_size = 256 # context of up to 256 previous characters
-sampling_mode = 'random' # random, story_start, opening_biased, mixed
+sampling_mode = 'random' # random, story_start, opening_biased, mixed, full_story
 story_sampling_prob = 0.7 # for mixed mode: probability of drawing story-aware windows
 opening_window_tokens = 24 # max offset from a story start for opening-biased sampling
-loss_mode = 'standard' # standard, continuation_weighted
+aux_lm_prob = 0.0 # when using full_story batches, probability of drawing an auxiliary stream-LM batch
+aux_sampling_mode = 'mixed' # sampling mode for auxiliary LM batches
+aux_loss_mode = 'standard' # standard, continuation_weighted
+aux_mask_after_story_end = True # keep auxiliary LM batches story-bounded by default
+loss_mode = 'standard' # standard, continuation_weighted, prefix_to_continuation
 prompt_weight = 0.5 # relative weight for tokens inside the opening sentence
 continuation_weight = 2.0 # relative weight for continuation tokens after the opening sentence
 ending_weight = 1.25 # extra multiplier for the final ending_tokens continuation targets
@@ -206,14 +210,16 @@ def sample_story_indices(num_samples, data_length, split, mode):
     return sample_random_indices(num_samples, data_length)
 
 
-def choose_start_indices(split, data_length):
-    if split != 'train' or sampling_mode == 'random':
+def choose_start_indices(split, data_length, mode=None):
+    current_sampling_mode = sampling_mode if mode is None else mode
+
+    if split != 'train' or current_sampling_mode == 'random':
         return sample_random_indices(batch_size, data_length)
 
-    if sampling_mode in ('story_start', 'opening_biased'):
-        return sample_story_indices(batch_size, data_length, split, sampling_mode)
+    if current_sampling_mode in ('story_start', 'opening_biased'):
+        return sample_story_indices(batch_size, data_length, split, current_sampling_mode)
 
-    if sampling_mode == 'mixed':
+    if current_sampling_mode == 'mixed':
         use_story = np.random.rand(batch_size) < story_sampling_prob
         ix = sample_random_indices(batch_size, data_length)
         story_count = int(use_story.sum())
@@ -221,17 +227,44 @@ def choose_start_indices(split, data_length):
             ix[use_story] = sample_story_indices(story_count, data_length, split, 'opening_biased')
         return ix
 
-    raise ValueError(f"Unknown sampling_mode: {sampling_mode}")
+    raise ValueError(f"Unknown sampling_mode: {current_sampling_mode}")
 
 
-def prepare_targets_and_weights(start_indices, targets, split):
-    apply_story_end_mask = mask_after_story_end or loss_mode == 'continuation_weighted'
+def build_batch_context(start_indices, batch_loss_mode=None, batch_mask_after_story_end=None):
+    return {
+        'start_indices': np.asarray(start_indices, dtype=np.int64),
+        'loss_mode': loss_mode if batch_loss_mode is None else batch_loss_mode,
+        'mask_after_story_end': mask_after_story_end if batch_mask_after_story_end is None else batch_mask_after_story_end,
+    }
+
+
+def sample_story_ids(num_samples, split):
+    metadata = load_story_metadata(split)
+    if metadata is None:
+        raise ValueError(f"Full-story batching requested for split '{split}', but story metadata is unavailable in {data_dir}.")
+
+    valid_story_ids = np.flatnonzero(metadata['lengths'] > 1)
+    if len(valid_story_ids) == 0:
+        raise ValueError(f"No valid stories with at least two tokens found for split '{split}'.")
+
+    chosen = np.random.randint(0, len(valid_story_ids), size=num_samples).astype(np.int64)
+    return valid_story_ids[chosen]
+
+
+def prepare_targets_and_weights(batch_context, targets, split):
+    start_indices = batch_context['start_indices']
+    batch_loss_mode = batch_context['loss_mode']
+    batch_mask_after_story_end = batch_context['mask_after_story_end']
+    apply_story_end_mask = batch_mask_after_story_end or batch_loss_mode in ('continuation_weighted', 'prefix_to_continuation')
     if not apply_story_end_mask:
-        if loss_mode != 'standard':
-            raise ValueError(f"Unknown loss_mode: {loss_mode}")
+        if batch_loss_mode != 'standard':
+            raise ValueError(f"Unknown loss_mode: {batch_loss_mode}")
         return targets, None
 
-    metadata = load_story_metadata(split, require_first_sentence=(loss_mode == 'continuation_weighted'))
+    metadata = load_story_metadata(
+        split,
+        require_first_sentence=(batch_loss_mode in ('continuation_weighted', 'prefix_to_continuation')),
+    )
     if metadata is None:
         raise ValueError(
             f"Story-bounded loss requested for split '{split}', but story metadata is unavailable in {data_dir}."
@@ -245,10 +278,10 @@ def prepare_targets_and_weights(start_indices, targets, split):
 
     masked_targets = targets.clone()
     weights = None
-    if loss_mode == 'continuation_weighted':
+    if batch_loss_mode == 'continuation_weighted':
         weights = torch.zeros_like(masked_targets, dtype=torch.float32)
-    elif loss_mode != 'standard':
-        raise ValueError(f"Unknown loss_mode: {loss_mode}")
+    elif batch_loss_mode not in ('standard', 'prefix_to_continuation'):
+        raise ValueError(f"Unknown loss_mode: {batch_loss_mode}")
 
     story_ids = np.searchsorted(starts, start_indices, side='right') - 1
     story_ids = np.clip(story_ids, 0, len(starts) - 1)
@@ -264,6 +297,11 @@ def prepare_targets_and_weights(start_indices, targets, split):
             masked_targets[row, valid_len:] = -1
 
         if weights is None:
+            if batch_loss_mode == 'prefix_to_continuation':
+                prompt_end = story_start + int(first_sentence_lengths[story_id]) - 1
+                prompt_valid_len = max(0, min(valid_len, prompt_end - start_idx))
+                if prompt_valid_len > 0:
+                    masked_targets[row, :prompt_valid_len] = -1
             continue
 
         prompt_end = story_start + int(first_sentence_lengths[story_id]) - 1
@@ -280,8 +318,8 @@ def prepare_targets_and_weights(start_indices, targets, split):
     return masked_targets, weights
 
 
-def compute_loss_for_batch(model, inputs, targets, start_indices, split):
-    effective_targets, loss_weights = prepare_targets_and_weights(start_indices, targets, split)
+def compute_loss_for_batch(model, inputs, targets, batch_context, split):
+    effective_targets, loss_weights = prepare_targets_and_weights(batch_context, targets, split)
     logits, standard_loss = model(inputs, effective_targets)
     if loss_weights is None:
         return logits, standard_loss
@@ -375,6 +413,48 @@ def warmstart_model_from_checkpoint(model, checkpoint):
         print(f"Warm-start fresh tensors: {preview}")
 
 
+def build_stream_batch(data, start_indices):
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in start_indices])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in start_indices])
+    return x, y
+
+
+def build_full_story_batch(data, split):
+    metadata = load_story_metadata(split, require_first_sentence=(loss_mode in ('continuation_weighted', 'prefix_to_continuation')))
+    if metadata is None:
+        raise ValueError(f"Full-story batching requested for split '{split}', but story metadata is unavailable in {data_dir}.")
+
+    starts = metadata['starts']
+    lengths = metadata['lengths']
+    story_ids = sample_story_ids(batch_size, split)
+    start_indices = starts[story_ids].astype(np.int64, copy=False)
+
+    x = torch.full((batch_size, block_size), EOT_TOKEN_ID, dtype=torch.int64)
+    y = torch.full((batch_size, block_size), -1, dtype=torch.int64)
+
+    for row, story_id in enumerate(story_ids.tolist()):
+        story_start = int(starts[story_id])
+        story_len = int(lengths[story_id])
+        valid_len = max(0, min(block_size, story_len - 1))
+        if valid_len == 0:
+            continue
+        story_window = np.array(data[story_start:story_start + valid_len + 1], dtype=np.int64)
+        story_tokens = torch.from_numpy(story_window)
+        x[row, :valid_len] = story_tokens[:-1]
+        y[row, :valid_len] = story_tokens[1:]
+
+    return x, y, start_indices
+
+
+def move_batch_to_device(x, y):
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
+
+
 def get_batch(split):
     # We recreate np.memmap every batch to avoid a memory leak, as per
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
@@ -382,15 +462,27 @@ def get_batch(split):
         data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     else:
         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-    ix = choose_start_indices(split, len(data))
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
-    if device_type == 'cuda':
-        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+
+    if sampling_mode == 'full_story':
+        use_auxiliary_batch = split == 'train' and aux_lm_prob > 0.0 and np.random.rand() < aux_lm_prob
+        if use_auxiliary_batch:
+            start_indices = choose_start_indices(split, len(data), mode=aux_sampling_mode)
+            x, y = build_stream_batch(data, start_indices)
+            batch_context = build_batch_context(
+                start_indices,
+                batch_loss_mode=aux_loss_mode,
+                batch_mask_after_story_end=aux_mask_after_story_end,
+            )
+        else:
+            x, y, start_indices = build_full_story_batch(data, split)
+            batch_context = build_batch_context(start_indices)
     else:
-        x, y = x.to(device), y.to(device)
-    return x, y, ix
+        start_indices = choose_start_indices(split, len(data), mode=sampling_mode)
+        x, y = build_stream_batch(data, start_indices)
+        batch_context = build_batch_context(start_indices)
+
+    x, y = move_batch_to_device(x, y)
+    return x, y, batch_context
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0

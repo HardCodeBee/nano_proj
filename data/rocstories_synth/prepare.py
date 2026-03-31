@@ -32,6 +32,8 @@ DEFAULT_INPUT = Path(__file__).resolve().parent / "raw" / "accepted.jsonl"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare synthetic ROCStories-style data.")
     parser.add_argument("--input-jsonl", default=str(DEFAULT_INPUT))
+    parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parent))
+    parser.add_argument("--dataset-label", default="synthetic_rocstories_style")
     parser.add_argument("--val-fraction", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=2027)
     return parser.parse_args()
@@ -107,7 +109,8 @@ def write_split(out_dir: Path, split_name: str, stories: list[str], stats: dict)
 
 def main() -> None:
     args = parse_args()
-    out_dir = Path(__file__).resolve().parent
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     input_path = Path(args.input_jsonl)
     if not input_path.exists():
         raise FileNotFoundError(f"Missing synthetic input file: {input_path}")
@@ -133,7 +136,7 @@ def main() -> None:
     train_stories = stories[val_count:]
 
     stats = {
-        "dataset_id": "synthetic_rocstories_style",
+        "dataset_id": args.dataset_label,
         "source_jsonl": str(input_path),
         "tokenizer": "gpt2",
         "separator_token_id": int(ENC.eot_token),

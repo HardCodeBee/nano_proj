@@ -32,7 +32,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPT_FILE = PROJECT_ROOT / "prompts" / "task2_rocstyle_rewrite_prompt.txt"
 DEFAULT_ACCEPTED = PROJECT_ROOT / "data" / "rocstories_synth" / "raw" / "accepted.jsonl"
 DEFAULT_REJECTED = PROJECT_ROOT / "data" / "rocstories_synth" / "raw" / "rejected.jsonl"
-DEFAULT_DATASET_ID = "roneneldan/TinyStories"
+DEFAULT_DATASET_ID = "mintujupally/ROCStories"
+DEFAULT_SOURCE_SPLIT = "train"
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DEFAULT_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 ENC = tiktoken.get_encoding("gpt2")
@@ -45,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--prompt-file", default=str(DEFAULT_PROMPT_FILE))
     parser.add_argument("--source-dataset", default=DEFAULT_DATASET_ID)
-    parser.add_argument("--source-split", default="validation")
+    parser.add_argument("--source-split", default=DEFAULT_SOURCE_SPLIT)
     parser.add_argument("--source-text-key", default="text")
     parser.add_argument("--source-limit", type=int, default=12000)
     parser.add_argument("--target-count", type=int, default=3000)
@@ -55,6 +56,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-retries", type=int, default=3)
     parser.add_argument("--sleep", type=float, default=0.2)
     parser.add_argument("--max-source-chars", type=int, default=1600)
+    parser.add_argument("--required-sentence-count", type=int, default=5)
+    parser.add_argument("--min-token-count", type=int, default=35)
+    parser.add_argument("--max-token-count", type=int, default=110)
+    parser.add_argument("--min-opening-overlap", type=float, default=0.25)
     parser.add_argument("--accepted-jsonl", default=str(DEFAULT_ACCEPTED))
     parser.add_argument("--rejected-jsonl", default=str(DEFAULT_REJECTED))
     parser.add_argument("--resume", action="store_true")
@@ -120,20 +125,27 @@ def has_repeated_4gram(text: str) -> bool:
     return False
 
 
-def validate_story(story: str, source_opening: str) -> tuple[bool, str, int, int]:
+def validate_story(
+    story: str,
+    source_opening: str,
+    required_sentence_count: int,
+    min_token_count: int,
+    max_token_count: int,
+    min_opening_overlap: float,
+) -> tuple[bool, str, int, int]:
     normalized = " ".join(story.split()).strip()
     sentences = split_sentences(normalized)
     token_count = len(ENC.encode_ordinary(normalized))
-    if len(sentences) != 5:
-        return False, f"expected_5_sentences_got_{len(sentences)}", len(sentences), token_count
-    if token_count < 35 or token_count > 110:
+    if len(sentences) != required_sentence_count:
+        return False, f"expected_{required_sentence_count}_sentences_got_{len(sentences)}", len(sentences), token_count
+    if token_count < min_token_count or token_count > max_token_count:
         return False, f"token_count_out_of_range_{token_count}", len(sentences), token_count
     if '"' in normalized or "“" in normalized or "”" in normalized:
         return False, "quote_heavy_output", len(sentences), token_count
     if has_repeated_4gram(normalized):
         return False, "repeated_4gram", len(sentences), token_count
     first_sentence_overlap = content_word_overlap(source_opening, sentences[0])
-    if first_sentence_overlap < 0.25:
+    if first_sentence_overlap < min_opening_overlap:
         return False, f"opening_alignment_too_low_{first_sentence_overlap:.2f}", len(sentences), token_count
     return True, "accepted", len(sentences), token_count
 
@@ -267,9 +279,18 @@ def main() -> None:
                 timeout=args.timeout,
                 max_retries=args.max_retries,
             )
-            accepted, reason, sentence_count, token_count = validate_story(synthetic_story, source_opening)
+            accepted, reason, sentence_count, token_count = validate_story(
+                synthetic_story,
+                source_opening,
+                required_sentence_count=args.required_sentence_count,
+                min_token_count=args.min_token_count,
+                max_token_count=args.max_token_count,
+                min_opening_overlap=args.min_opening_overlap,
+            )
             record = {
                 "source_index": source_index,
+                "source_dataset": args.source_dataset,
+                "source_split": args.source_split,
                 "source_opening": source_opening,
                 "source_story": source_text,
                 "story": synthetic_story,
@@ -288,6 +309,8 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             record = {
                 "source_index": source_index,
+                "source_dataset": args.source_dataset,
+                "source_split": args.source_split,
                 "source_opening": source_opening,
                 "source_story": source_text,
                 "story": "",
