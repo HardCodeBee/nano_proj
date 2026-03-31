@@ -37,3 +37,14 @@
 - Default order is always Stage A then Stage B.
 - Only consider Stage C if Stage B clearly beats `storymix_v1 Stage A/B` and starts closing the gap to the current E4 bar.
 - Otherwise Stage C does not run.
+
+## Observed v2 results so far
+
+- Stage A currently has only the lightweight sample-analysis summary recorded in-repo:
+  `prompt_to_first_sentence_overlap = 0.0729`, `sentence_count = 5.4`, `ended_with_eot_rate = 1.0`, `terminal_punctuation_rate = 1.0`, `distinct_4_ratio = 1.0`, `avg_generated_tokens = 96.0`.
+- Stage B has the fixed evaluation result recorded from the remote run:
+  `avg_loss = 3.3610`, `ppl = 28.83`, `mean_qwen_score = 1.9`, `repetition_failures = 0`, `truncation_failures = 0`, `prompt_drift_failures = 0`.
+- Interpretation:
+  Stage B looked more ROC-shaped than Stage A in the tiny sample summary, but the formal Stage B evaluation regressed badly on both `ppl` and judge score relative to the current bars.
+- Decision:
+  `tiny_roc_curriculum_v2` does not currently pass the Stage B gate, so Stage C should stay unused.
