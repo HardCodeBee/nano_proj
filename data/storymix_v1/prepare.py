@@ -41,7 +41,14 @@ DEFAULT_TINY_TOP_K = 120000
 ENC = tiktoken.get_encoding("gpt2")
 EOT_TOKEN_ID = int(ENC.eot_token)
 TERMINAL_PUNCTUATION = (".", "!", "?")
-QUOTE_CHARS = "\"'“”‘’"
+QUOTE_CHARS = ('"', "'", "\u201c", "\u201d", "\u2018", "\u2019")
+QUOTE_NORMALIZATION_MAP = {
+    "\u201c": '"',
+    "\u201d": '"',
+    "\u2018": "'",
+    "\u2019": "'",
+    "`": "'",
+}
 WORD_RE = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 LIST_LINE_RE = re.compile(r"(?m)^\s*(?:[-*]|\d+[.)])\s+")
 QA_RE = re.compile(r"(?i)(?:^|\n)\s*(?:q|a)\s*[:\-]")
@@ -130,6 +137,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-dialogue-sentences", type=int, default=1)
     parser.add_argument("--max-repeat-4gram-ratio", type=float, default=0.18)
     parser.add_argument("--near-dedup-threshold", type=float, default=0.92)
+    parser.add_argument("--length-distance-scale", type=float, default=8.0)
+    parser.add_argument("--target-sentence-count", type=int, default=5)
+    parser.add_argument("--target-sentence-bonus", type=float, default=1.25)
+    parser.add_argument("--neighbor-sentence-bonus", type=float, default=0.25)
+    parser.add_argument("--scene-bonus", type=float, default=0.45)
+    parser.add_argument("--fantasy-penalty", type=float, default=0.55)
+    parser.add_argument("--titlecase-penalty", type=float, default=0.35)
+    parser.add_argument("--exclamation-penalty", type=float, default=0.15)
     parser.add_argument("--progress-every", type=int, default=100000)
     return parser.parse_args()
 
@@ -141,13 +156,8 @@ def normalize_whitespace(text: str) -> str:
 
 def normalize_for_dedup(text: str) -> str:
     text = normalize_whitespace(text)
-    text = (
-        text.replace("“", '"')
-        .replace("”", '"')
-        .replace("’", "'")
-        .replace("‘", "'")
-        .replace("`", "'")
-    )
+    for source, target in QUOTE_NORMALIZATION_MAP.items():
+        text = text.replace(source, target)
     text = text.lower()
     return re.sub(r"\s+", " ", text).strip()
 
@@ -245,29 +255,35 @@ def count_noninitial_titlecase_tokens(text: str) -> int:
     return count
 
 
-def soft_score_story(text: str, bpe_len: int, sentence_count: int, roc_length_median: float) -> float:
+def soft_score_story(
+    text: str,
+    bpe_len: int,
+    sentence_count: int,
+    roc_length_median: float,
+    args: argparse.Namespace,
+) -> float:
     lowered_tokens = set(word_tokens(text))
     score = 0.0
 
-    score -= abs(bpe_len - roc_length_median) / 8.0
-    if sentence_count == 5:
-        score += 1.25
-    elif sentence_count in (4, 6):
-        score += 0.25
+    score -= abs(bpe_len - roc_length_median) / args.length_distance_scale
+    if sentence_count == args.target_sentence_count:
+        score += args.target_sentence_bonus
+    elif abs(sentence_count - args.target_sentence_count) == 1:
+        score += args.neighbor_sentence_bonus
 
     scene_hits = sum(1 for words in SCENE_KEYWORDS.values() if lowered_tokens & words)
-    score += 0.45 * scene_hits
+    score += args.scene_bonus * scene_hits
 
     fantasy_hits = len(lowered_tokens & FANTASY_KEYWORDS)
-    score -= 0.55 * min(fantasy_hits, 4)
+    score -= args.fantasy_penalty * min(fantasy_hits, 4)
 
     titlecase_count = count_noninitial_titlecase_tokens(text)
     if titlecase_count > 1:
-        score -= 0.35 * (titlecase_count - 1)
+        score -= args.titlecase_penalty * (titlecase_count - 1)
 
     exclamation_count = text.count("!")
     if exclamation_count > 1:
-        score -= 0.15 * (exclamation_count - 1)
+        score -= args.exclamation_penalty * (exclamation_count - 1)
 
     return score
 
@@ -463,7 +479,7 @@ def inspect_tiny_story(text: str, args: argparse.Namespace, roc_length_median: f
         "sentence_count": sentence_count,
         "bpe_len": bpe_len,
         "repeat_4gram_ratio": repeat_4gram_ratio,
-        "soft_score": soft_score_story(normalized_text, bpe_len, sentence_count, roc_length_median),
+        "soft_score": soft_score_story(normalized_text, bpe_len, sentence_count, roc_length_median, args),
         "roc_length_median": roc_length_median,
         "simhash": build_simhash(tokens),
     }
@@ -640,6 +656,16 @@ def main() -> None:
             "max_repeat_4gram_ratio": args.max_repeat_4gram_ratio,
             "near_dedup_threshold": args.near_dedup_threshold,
             "top_tiny_examples": args.max_tiny_train_examples,
+        },
+        "tiny_sort_defaults": {
+            "length_distance_scale": args.length_distance_scale,
+            "target_sentence_count": args.target_sentence_count,
+            "target_sentence_bonus": args.target_sentence_bonus,
+            "neighbor_sentence_bonus": args.neighbor_sentence_bonus,
+            "scene_bonus": args.scene_bonus,
+            "fantasy_penalty": args.fantasy_penalty,
+            "titlecase_penalty": args.titlecase_penalty,
+            "exclamation_penalty": args.exclamation_penalty,
         },
         "mixture": {
             "rocstories_train_stories": len(roc_splits["train"]),
