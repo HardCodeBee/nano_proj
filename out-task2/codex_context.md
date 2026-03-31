@@ -1,6 +1,6 @@
 # Goal
 - Current goal: maintain repository-local context for Task 2 / Task 3 ROCStories story-generation work.
-- This round scope: sync the completed route-1-to-5 Task 2 experiments into the active docs and keep local / remote workflow notes aligned with repo constraints.
+- This round scope: sync the completed route-1-to-5 Task 2 experiments plus the first `storymix_v1` from-scratch pilot into the active docs and keep local / remote workflow notes aligned with repo constraints.
 - Non-goals: do not change the course evaluation chain; do not rewrite Task 1 historical conclusions; do not treat old `r19` as a fair baseline on the new `ROC val`.
 
 # Hard Constraints
@@ -44,12 +44,17 @@
 - Confirmed from `out-task2/results.csv`: `e5-roc-native-masked-recovery-openai` reached `3.149 / 23.32 / 2.0`, so ROC-native synthetic recovery repaired token-level fit much better than the old E5 line but still gave back the Stage-1 judge gain.
 - Confirmed from `out-task2/results.csv`: `e8-prefix-continuation-openai` scored `3.166 / 23.72 / 2.0`, and its decoding sweep also stayed flat, so the direct prefix-to-continuation pilot did not create a new continuation-quality win.
 - Confirmed from `out-task2/results.csv`: `e8-masked-anneal-openai` scored `3.172 / 23.86 / 2.0`, so a slower masked-annealing schedule did not recover the lost E4 edge either.
+- Confirmed from source: the new `storymix_v1` mainline code path now exists in `data/storymix_v1/prepare.py`, `config/train_storymix_v1_stageA_scratch.py`, `config/train_storymix_v1_stageB_roc_adapt.py`, `config/train_storymix_v1_stageC_continuation.py`, `scripts/analyze_task2_samples.py`, and `scripts/run_decode_sweep.py`.
+- Confirmed from shared remote console output on 2026-03-31: `storymix-v1-stageA-openai` reached `avg_loss / ppl = 3.303 / 27.19` with local judge `2.0`; it learned a stable five-sentence story shell but did not yet beat the E4 anchor.
+- Confirmed from `out-task2/results.csv`: `storymix-v1-stageB-openai` scored `3.322 / 27.70 / 2.0`, so the first ROC-only adaptation stage did not improve either token-level fit or judged quality versus the Stage A starting point.
+- Confirmed from `out-task2/results.csv`: `storymix-v1-stageC-openai` scored `3.390 / 29.66 / 2.2`, so the conservative continuation polish recovered some quality signal but with a material `ppl` regression versus both Stage B and `e4-posteot-mask-openai`.
+- Confirmed from current comparison status: `storymix_v1` is now an informative non-winning pilot; it does not replace `e4-posteot-mask-openai` as the practical Task 2 anchor under the current protocol.
 - Confirmed from remote checkpoint inspection: the returned checkpoints finished at `iter_num = 16500` for E6 Step 1, `17500` for E6 Step 2, and `6000` for E7, with checkpoint `best_val_loss` values `3.4166`, `3.4295`, and `3.4504` respectively.
 - Confirmed from source: both `config/train_rocstories_task2_e4_recovery.py` and `config/train_rocstories_task2_e5_recovery.py` disable `mask_after_story_end` during their recovery stage, so the earlier recovery recipes did not preserve the clearest story-boundary cleanup win from E4 Step 1.
 - Confirmed from repo state: a new follow-up config `config/train_rocstories_task2_e5_masked_recovery.py` now exists to test a short real-ROC recovery from `e5-synth-continuation-weighted` while keeping `mask_after_story_end = True`.
 - Confirmed from model sizing: the `e7-warmstart-depth7-bs128` config is about `31.71M` non-embedding parameters under the current `model.py`, so it stays within the `<= 32M` course cap.
-- Confirmed: active Task 2 documentation is now intentionally limited to `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/results.csv`, and `out-task2/decision_log.md`; the old `task2_current_status.md` / `task2_experiments.md` placeholders were removed to avoid duplicate maintenance.
-- Known limitation: local judge scores remain stuck around `2.0`; improving `ppl` has been easier than improving judged story quality.
+- Confirmed: the core Task 2 state is maintained in `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/results.csv`, and `out-task2/decision_log.md`, while `out-task2/report_qualitative_examples.md` and `docs/task2_storymix_v1_runbook.md` now serve as report-prep support notes rather than duplicate experiment logs.
+- Known limitation: local judge scores still mostly cluster in the `2.0-2.2` range; improving `ppl` has been easier than improving judged story quality.
 - Workflow rule: for every Task 2 / Task 3 turn, first classify the request, then read `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, and the relevant raw source files before implementation, debugging, evaluation, or report writing.
 - Workflow rule: if a future request is not Task 2 / Task 3, use `docs/codex_context.md` as the general repository context file and create it from a minimal template if it is missing.
 - Update rule: when facts change, update only the affected sections; keep new metrics in `out-task2/results.csv` first, then sync the short summary here and any report-ready interpretation in `out-task2/task2_working_notes.md`.
@@ -134,6 +139,30 @@
 - Path: `config/train_rocstories_task2_e8_masked_anneal_stage1.py`
   Role: E8 masked-annealing Stage-1 config
   Related items: Stage 1 of `story_start -> mixed` annealing; see also Stage 2 / Stage 3 configs
+- Path: `data/storymix_v1/prepare.py`
+  Role: new from-scratch narrative-mix dataset builder for the `storymix_v1` mainline
+  Related items: filtered TinyStories selection, ROC leakage guard, story metadata arrays, `dataset_stats.json`, `filter_report.json`
+- Path: `config/train_storymix_v1_stageA_scratch.py`
+  Role: Stage A scratch-pretraining config for `storymix_v1`
+  Related items: `dataset = storymix_v1`, `sampling_mode = story_start`, `mask_after_story_end = True`
+- Path: `config/train_storymix_v1_stageB_roc_adapt.py`
+  Role: Stage B ROC-only adaptation config
+  Related items: `init_from = warmstart_path`, ROC-only retargeting without optimizer-state reuse
+- Path: `config/train_storymix_v1_stageC_continuation.py`
+  Role: Stage C conservative continuation-polish config
+  Related items: `loss_mode = continuation_weighted`, mild prompt / continuation / ending weighting
+- Path: `scripts/analyze_task2_samples.py`
+  Role: sample-summary helper for report-ready generation diagnostics
+  Related items: `prompt_to_first_sentence_overlap`, `sentence_count`, `distinct_4_ratio`, `avg_generated_tokens`
+- Path: `scripts/run_decode_sweep.py`
+  Role: decode-sweep wrapper around the fixed Task 2 scorer
+  Related items: temperature / `top_k` grid for shortlisted checkpoints
+- Path: `docs/task2_storymix_v1_runbook.md`
+  Role: runbook for the from-scratch `storymix_v1` mainline
+  Related items: Stage A / B / C definitions, stop-go checks, current pilot outcome
+- Path: `out-task2/report_qualitative_examples.md`
+  Role: report-ready qualitative sample note
+  Related items: archived Task 1 examples, active Task 2 failure-mode examples, report wording hints
 
 # Latest Runs
 - `run_name`: `e1-tinystories-to-rocstories-openai`
@@ -250,6 +279,24 @@
   `avg_loss / ppl`: `3.172 / 23.86`
   `judge score`: `2.0`
   Notes: slower annealing did not recover the E4 Step-1 advantage
+- `run_name`: `storymix-v1-stageA-openai`
+  `out_dir`: `out-storymix-v1-stageA`
+  `dataset_recipe`: `storymix_v1 scratch pretraining`
+  `avg_loss / ppl`: `3.303 / 27.19`
+  `judge score`: `2.0`
+  Notes: remote console result only; learned a stable five-sentence story shell, but content coherence was still weak
+- `run_name`: `storymix-v1-stageB-openai`
+  `out_dir`: `out-storymix-v1-stageB`
+  `dataset_recipe`: `storymix_v1 scratch -> ROC-only adaptation`
+  `avg_loss / ppl`: `3.322 / 27.70`
+  `judge score`: `2.0`
+  Notes: first ROC-only adaptation did not improve over Stage A and weakened prompt adherence in sample analysis
+- `run_name`: `storymix-v1-stageC-openai`
+  `out_dir`: `out-storymix-v1-stageC`
+  `dataset_recipe`: `storymix_v1 scratch -> ROC-only adaptation -> conservative continuation polish`
+  `avg_loss / ppl`: `3.390 / 29.66`
+  `judge score`: `2.2`
+  Notes: best `storymix_v1` quality signal so far, but not a clean overall win because `ppl` regressed materially
 
 # Current Status
 - Completed: E1 curriculum, E2 story-aware polish, E3 corrected synthetic-distillation implementation and evaluation; explicit repository-local context workflow was recorded for Task 2 / Task 3.
@@ -266,8 +313,9 @@
 - Completed this round: the submission-safe decoding sweep for `e4-posteot-mask-openai` and `e5-masked-recovery-openai` was scored; the best E4 sweep only tied the baseline at `t = 0.8, top_k = 80`, and E5 stayed at judge `2.0` across the tested grid.
 - Completed this round: ROC-native synthetic Stage 1 and masked recovery were trained and scored; Stage 1 reduced the old E5 `ppl` collapse while keeping judge `2.2`, but recovery still fell back to judge `2.0`.
 - Completed this round: the direct prefix-to-continuation and masked-annealing pilots were trained and scored; both remained non-winning follow-ups behind `e4-posteot-mask-openai`.
-- Current shortlist question: whether ROC-native synthetic deserves one more follow-up, since it is the only new route that materially reduced the old synthetic Stage-1 distribution damage without fully collapsing judged quality.
-- Current blocker: no scored run has yet improved both local judged quality and token-level fit beyond `e4-posteot-mask-openai`; real-data branches remain stuck around judge `2.0-2.1`, and `ppl ≈ 20` is still far away.
+- Completed this round: the new `storymix_v1` from-scratch mainline was implemented, pushed, trained remotely through Stage C, and synced back into the active Task 2 docs.
+- Current shortlist question: whether `storymix_v1` Stage C deserves a small decode sweep before freezing the line, since it is the only new real-data-adjacent route from this round that moved the local judge above `2.1`.
+- Current blocker: no scored run has yet improved both local judged quality and token-level fit beyond `e4-posteot-mask-openai`; `storymix_v1` Stage C raised the judge to `2.2` but regressed to `ppl = 29.66`, and `ppl <= 20` is still far away.
 
 # Decisions
 - 2026-03-30 | Use new `ROC val` for daily Task 2 comparison | Avoid daily tuning on public test | `data/rocstories/prepare.py`, `scripts/task2_generate_and_score.py`
@@ -287,6 +335,8 @@
 - 2026-03-31 | Prioritize an E5 masked real-data recovery follow-up over rerunning E6/E7 | E6 and E7 already failed under the fixed scorer, while both older recovery recipes turned `mask_after_story_end` off and may have washed out the one clearly helpful supervision cleanup | `config/train_rocstories_task2_e5_masked_recovery.py`, `out-task2/codex_context.md`, `out-task2/decision_log.md` | Test whether synthetic judge-side gains can be partially retained without reintroducing cross-story spillover
 - 2026-03-31 | Treat the submission-safe decoding frontier sweep as a non-winning check rather than a hidden easy gain | The tested `temperature` / `top_k` grid only tied `e4-posteot-mask-openai` at `t = 0.8, k = 80` and never rescued the masked E5 line | `scripts/task2_sample_param_sweep.py`, `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/decision_log.md` | Keep the current E4 decoding defaults unless a later prompt set shows a different frontier
 - 2026-03-31 | Keep `e4-posteot-mask-openai` as the Task 2 anchor after completing routes 1-5 | Masked E5 recovery, ROC-native masked recovery, prefix-to-continuation, and masked annealing all failed to beat it; only ROC-native synthetic Stage 1 reduced the old E5 Stage-1 `ppl` collapse while keeping some judge gain | `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/decision_log.md` | If experimentation continues, ROC-native synthetic is the only new branch from this round that still looks mildly worth another follow-up
+- 2026-03-31 | Freeze the older E4/E5/E6/E7/E8 branches as historical comparisons and start a fresh `storymix_v1` mainline from scratch | The old line had turned into local repairs on existing checkpoints; the new hypothesis was that a narrative-only data regime plus staged ROC retargeting might produce a healthier small story LM | `data/storymix_v1/prepare.py`, `config/train_storymix_v1_stageA_scratch.py`, `config/train_storymix_v1_stageB_roc_adapt.py`, `config/train_storymix_v1_stageC_continuation.py`, `docs/task2_storymix_v1_runbook.md` | Keep the Task 1-compliant model skeleton fixed and change the data regime before touching architecture
+- 2026-03-31 | Keep `e4-posteot-mask-openai` as the practical Task 2 anchor after the first `storymix_v1` pilot | `storymix-v1-stageC-openai` reached local judge `2.2`, but with `avg_loss / ppl = 3.390 / 29.66`; the new line is informative, but it is not yet the clean best balanced checkpoint | `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `docs/task2_storymix_v1_runbook.md` | Treat `storymix_v1` as a clue for future data-regime work, not as the default submission path yet
 
 # Verification
 - Already run: `data/rocstories/prepare.py`, E1 / E2 / E3 training branches, the full four-stage E4 line, `task2_generate_and_score.py`, local `py_compile` on the new E4-related Python files, local `py_compile` on the updated Task 2 scorer env-fallback patch, source reread of `train.py`, `model.py`, `data/rocstories/prepare.py`, `data/rocstories_synth/prepare.py`, `eval.py`, `scripts/task2_generate_and_score.py`, and the active Task 2 configs
@@ -302,12 +352,16 @@
 - Result: `e5-roc-native-stage1-openai` reached `3.520 / 33.79 / 2.2`; `e5-roc-native-masked-recovery-openai` reached `3.149 / 23.32 / 2.0`.
 - Result: `e8-prefix-continuation-openai` reached `3.166 / 23.72 / 2.0`, and its decoding sweep also stayed flat across the tested grid.
 - Result: `e8-masked-anneal-openai` reached `3.172 / 23.86 / 2.0`.
+- Result: shared remote console output for `storymix-v1-stageA-openai` reported `3.303 / 27.19 / 2.0`; sample analysis showed stable five-sentence formatting plus `prompt_to_first_sentence_overlap = 0.2665`, but weak coherence.
+- Result: `storymix-v1-stageB-openai` reached `3.322 / 27.70 / 2.0`; sample analysis showed `prompt_to_first_sentence_overlap = 0.1101`, so the first ROC-only adaptation did not yet tighten prompt-faithful continuation.
+- Result: `storymix-v1-stageC-openai` reached `3.390 / 29.66 / 2.2`; sample analysis improved to `prompt_to_first_sentence_overlap = 0.1558` and `distinct_4_ratio = 0.9974`, but the `ppl` tradeoff remained too large to displace E4.
 - Unverified risk: the old E5 Stage-1 `2.4` judge and the newer ROC-native Stage-1 `2.2` judge may still reflect proxy-judge preference rather than a robust final-eval gain; current recovery recipes continue to erase that synthetic judge-side signal once the model is pulled back toward real ROCStories.
+- Unverified risk: the first `storymix_v1` pilot may still be under-optimized in Stage A length, ROC-only adaptation duration, or decode settings; the current result proves signal, but not that the line has been fairly exhausted.
 
 # Next Steps
 - Next 1: on every future Task 2 / Task 3 turn, read this file and `out-task2/task2_working_notes.md` before new work.
 - Next 2: after reading context files, re-read the relevant raw source/config/eval files before each new experiment, bug fix, or report update.
 - Next 3: use `e4-posteot-mask-openai` as the new daily comparison bar for future real-data Task 2 work.
 - Next 4: treat `e4-posteot-mask-openai` as the practical submission anchor unless a later branch clearly beats its `2.1` local judge without giving back token-level fit.
-- Next 5: if experimentation continues, inspect ROC-native Stage-1 and recovery samples and design a more conservative follow-up there before spending more time on the failed masked-E5, E8 prefix-to-continuation, or masked-annealing branches.
-- Next 6: do not expect an easy decoding-only win from the current `sample_params` frontier; the tested sweep only reproduced the E4 baseline rather than improving it.
+- Next 5: if experimentation continues, treat `storymix_v1` as the new data-regime clue and design a more conservative Stage A / B follow-up before spending more time on the older masked-E5, E8 prefix-to-continuation, or masked-annealing branches.
+- Next 6: for report writing, cite `out-task2/results.csv`, `out-task2/task2_working_notes.md`, `out-task2/report_qualitative_examples.md`, and `docs/task2_storymix_v1_runbook.md` together so the metric table, narrative interpretation, qualitative examples, and current mainline plan stay aligned.

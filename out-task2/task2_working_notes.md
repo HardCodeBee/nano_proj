@@ -17,6 +17,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - Submission-safe decoding sweeps were then checked as a zero-`ppl`-risk option, but they did not reveal a better frontier; the best E4 setting only tied the existing baseline.
 - A ROC-native synthetic regeneration route was the only partly encouraging new branch: it reduced the old E5 Stage-1 `ppl` collapse while keeping a judge score of `2.2`, but its masked recovery still fell back to judge `2.0`.
 - Two more training-target ideas were also tested directly: full-story prefix-to-continuation batching and masked annealing. Neither beat the simpler E4 Step-1 checkpoint.
+- A new from-scratch `storymix_v1` mainline then tested a different hypothesis: keep the Task 1 model skeleton fixed, rebuild the data regime around narrative-only story pretraining, then retarget on ROCStories and finish with a conservative continuation polish. That line produced a weak-but-real quality signal in Stage C (`judge = 2.2`), but still regressed badly on `ppl`, so it is a clue rather than the new default winner.
 
 ## What is safe to claim
 
@@ -30,6 +31,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - The strongest practical checkpoint so far is `e4-posteot-mask-openai`, because it improved both token-level fit and the local judge without needing the later E4 stages.
 - The E6 and E7 follow-ups strengthen that conclusion: neither broader mixed sampling nor the current 7-layer warm-start recipe improved over E4 Step 1.
 - The decoding sweep result also strengthens that conclusion: there does not appear to be an easy submission-safe generation-parameter fix waiting in the current `temperature / top_k` grid.
+- The new `storymix_v1` line is also safe to claim as a meaningful experiment: it showed that a from-scratch narrative-only pretraining route can learn a strong five-sentence story shell and later recover a local judge score of `2.2`, but the first implementation did not preserve token-level fit well enough to displace the older E4 anchor.
 
 ## What should be stated carefully
 
@@ -42,6 +44,7 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - E6 and E7 should now be framed as negative or neutral follow-ups, not pending branches. They were useful ablations, but they did not beat `e4-posteot-mask-openai`.
 - The ROC-native synthetic pilot should be framed carefully too: it was healthier than the old synthetic Stage 1, but it still did not produce a recovery-stage win.
 - Prefix-to-continuation and masked annealing are now completed negative pilots, not pending ideas.
+- The first `storymix_v1` pilot should also be framed carefully: it is not a win over E4, because its best scored stage traded quality signal for a large `ppl` regression.
 - The local automatic judge is only a proxy for the final evaluation; it is useful, but not the official private-test scorer.
 
 ## Failure pattern summary
@@ -64,6 +67,7 @@ E7 adds a fourth clue: a near-capacity depth/context expansion by itself is not 
 The decoding sweep result matters mostly as a negative control: the current judged-quality ceiling does not look like a simple `sample_params.json` mistake, because the tested frontier only reproduced the existing E4 score.
 That specific masking question is now partly answered: turning the mask back on helped only marginally on token fit and did not recover judged quality, so the dominant issue appears to be the synthetic distribution shift itself rather than the missing mask alone.
 The E8 pilots reinforce the broader lesson: making the continuation target more explicit or annealing toward broader coverage did not outperform the simpler post-`EOT` masking fix once everything was scored under the same protocol.
+The new `storymix_v1` pilot adds a fifth clue. A fresh narrative-only data regime can teach the model a cleaner five-sentence story shape from scratch, and a conservative continuation-polish stage can move the judge back up to `2.2`. But because the ROC-only adaptation stage did not first produce a strong ROC-aligned base, the final Stage C result still paid too much in `ppl`. That suggests the data-regime idea is not obviously wrong; the current Stage A / Stage B handoff is probably the main bottleneck on this new line.
 
 ## If writing the report now
 
@@ -75,11 +79,13 @@ Main Task 2 arc:
 4. Try a more aggressive prompt-aligned synthetic-distillation branch.
 5. Test story-bounded masking and continuation-weighted supervision on real ROCStories.
 6. Test broader mixed-sampling and near-capacity warm-start follow-ups.
-7. Conclude that the best practical checkpoint still came from the simple post-`EOT` masking fix, while token-level improvements remained easier to obtain than consistent judged story-quality gains.
+7. Test a fresh `storymix_v1` from-scratch mainline built around narrative-only pretraining, ROC-only adaptation, and conservative continuation polish.
+8. Conclude that the best practical checkpoint still came from the simple post-`EOT` masking fix, while token-level improvements remained easier to obtain than consistent judged story-quality gains.
 
 ## Next-step note
 
 If experimentation continues, the real-data anchor should still be `e4-posteot-mask-openai`.
 This direction has now been tested more fully: story-bounded masking worked best, while the heavier continuation-weighted stages, the broader mixed-sampling follow-up, the current near-capacity warm-start expansion, the prefix-to-continuation pilot, and masked annealing all failed to surpass it.
 The synthetic backup route should still stay separate in reporting: it surfaced an interesting judge-side gain, and the ROC-native synthetic source looked healthier than the old one, but the real-data bar to beat remains `e4-posteot-mask-openai` until that gain can be retained without the recovery-stage collapse.
-The next execution plan should no longer treat masked E5 recovery, decoding sweeps, E8 prefix-to-continuation, or masked annealing as priority branches. The only new line from this round that still looks mildly worth another follow-up is ROC-native synthetic with a more conservative recovery design.
+The new `storymix_v1` line should also stay separate in reporting from the older E4 winner. It is the most relevant current clue if the project wants to argue for a different data regime, but the first pilot should be presented as an informative non-winner rather than as the new default path.
+The next execution plan should no longer treat masked E5 recovery, decoding sweeps on old non-winners, E8 prefix-to-continuation, or masked annealing as priority branches. The only lines that still look mildly worth another follow-up are ROC-native synthetic with a more conservative recovery design and `storymix_v1` with a healthier Stage A / Stage B handoff.
