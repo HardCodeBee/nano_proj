@@ -1,6 +1,6 @@
 # Goal
 - Current goal: maintain repository-local context for Task 2 / Task 3 ROCStories story-generation work.
-- This round scope: re-read Task 2 context plus raw source, sync any newly discovered experiment state, and keep credential handling notes aligned with repo constraints.
+- This round scope: sync the completed route-1-to-5 Task 2 experiments into the active docs and keep local / remote workflow notes aligned with repo constraints.
 - Non-goals: do not change the course evaluation chain; do not rewrite Task 1 historical conclusions; do not treat old `r19` as a fair baseline on the new `ROC val`.
 
 # Hard Constraints
@@ -37,6 +37,13 @@
 - Confirmed from `out-task2/results.csv`: `e6-mixed-masked-openai` scored `3.173 / 23.88 / 2.0`, so restoring broader mixed real-ROC coverage did not preserve the E4 Step-1 gain.
 - Confirmed from `out-task2/results.csv`: `e6-gentle-continuation-openai` scored `3.177 / 23.98 / 2.0`, so a milder continuation-weighted follow-up also failed to improve over `e4-posteot-mask-openai`.
 - Confirmed from `out-task2/results.csv`: `e7-warmstart-depth7-bs128-openai` scored `3.206 / 24.67 / 2.0`, so the near-capacity warm-start expansion did not improve either token-level fit or local judged quality under the current recipe.
+- Confirmed from `out-task2/results.csv`: `e5-masked-recovery-openai` scored `3.227 / 25.21 / 2.0`, so keeping `mask_after_story_end = True` during real-data recovery improved only slightly over the old `e5-recovery-openai` token fit and still did not preserve the E5 Stage-1 judge gain.
+- Confirmed from `out-task2/results.csv`: the masked-recovery LR sweep did not rescue route 1; both `e5-masked-recovery-lr2e5-openai` and `e5-masked-recovery-lr3e5-openai` stayed at about `3.227 / 25.20 / 2.0`.
+- Confirmed from `out-task2/results.csv`: the submission-safe decoding sweep did not produce a new leader; `e4-posteot-mask-openai-t080-k80` only tied the baseline `2.1`, while the tested `e5-masked-recovery-openai` sweep stayed flat at judge `2.0`.
+- Confirmed from `out-task2/results.csv`: `e5-roc-native-stage1-openai` reached `3.520 / 33.79 / 2.2`, which is still non-winning but materially healthier than the old E5 Stage 1 `3.796 / 44.51 / 2.4` and points to synthetic source mismatch as a real issue.
+- Confirmed from `out-task2/results.csv`: `e5-roc-native-masked-recovery-openai` reached `3.149 / 23.32 / 2.0`, so ROC-native synthetic recovery repaired token-level fit much better than the old E5 line but still gave back the Stage-1 judge gain.
+- Confirmed from `out-task2/results.csv`: `e8-prefix-continuation-openai` scored `3.166 / 23.72 / 2.0`, and its decoding sweep also stayed flat, so the direct prefix-to-continuation pilot did not create a new continuation-quality win.
+- Confirmed from `out-task2/results.csv`: `e8-masked-anneal-openai` scored `3.172 / 23.86 / 2.0`, so a slower masked-annealing schedule did not recover the lost E4 edge either.
 - Confirmed from remote checkpoint inspection: the returned checkpoints finished at `iter_num = 16500` for E6 Step 1, `17500` for E6 Step 2, and `6000` for E7, with checkpoint `best_val_loss` values `3.4166`, `3.4295`, and `3.4504` respectively.
 - Confirmed from source: both `config/train_rocstories_task2_e4_recovery.py` and `config/train_rocstories_task2_e5_recovery.py` disable `mask_after_story_end` during their recovery stage, so the earlier recovery recipes did not preserve the clearest story-boundary cleanup win from E4 Step 1.
 - Confirmed from repo state: a new follow-up config `config/train_rocstories_task2_e5_masked_recovery.py` now exists to test a short real-ROC recovery from `e5-synth-continuation-weighted` while keeping `mask_after_story_end = True`.
@@ -79,9 +86,12 @@
 - Path: `scripts/task2_generate_and_score.py`
   Role: unified Task 2 evaluation
   Related items: `run_eval_via_course_script`, `default_judge_api_key`, `default_judge_base_url`, `default_judge_model`, fixed prompts, local judge proxy
+- Path: `scripts/task2_sample_param_sweep.py`
+  Role: submission-safe Task 2 decoding sweep helper
+  Related items: temperature / `top_k` grid search, optional `sample_params.json` write-back
 - Path: `scripts/generate_rocstories_synthetic.py`
-  Role: E3 synthetic-data generation
-  Related items: `source_opening`, `opening_alignment_too_low_*`
+  Role: E3 and E5 synthetic-data generation
+  Related items: `source_opening`, `opening_alignment_too_low_*`, ROC-native source-dataset overrides
 - Path: `config/train_rocstories_task2_e4_posteot_mask.py`
   Role: Step-1 spillover-masking ablation config
   Related items: `mask_after_story_end`, `sampling_mode = story_start`
@@ -103,6 +113,12 @@
 - Path: `config/train_rocstories_task2_e5_masked_recovery.py`
   Role: E5 synthetic backup Stage-2b masked real-ROC recovery config
   Related items: `resume_ckpt_path = out-task2-e5-synth-continuation-weighted/ckpt.pt`, `sampling_mode = mixed`, `mask_after_story_end = True`
+- Path: `config/train_rocstories_synth_task2_e5_roc_native_continuation_weighted.py`
+  Role: E5 ROC-native synthetic Stage-1 config
+  Related items: ROCStories-sourced synthetic data, continuation-aware synthetic polish
+- Path: `config/train_rocstories_task2_e5_roc_native_masked_recovery.py`
+  Role: E5 ROC-native synthetic masked recovery config
+  Related items: `resume_ckpt_path = out-task2-e5-roc-native-synth-continuation-weighted/ckpt.pt`, `mask_after_story_end = True`
 - Path: `config/train_rocstories_task2_e6_mixed_masked.py`
   Role: E6 Step-1 mixed-sampling real-ROC follow-up from `e4-posteot-mask`
   Related items: `resume_ckpt_path = out-task2-e4-posteot-mask/ckpt.pt`, `sampling_mode = mixed`, `mask_after_story_end = True`
@@ -112,6 +128,12 @@
 - Path: `config/train_rocstories_task2_e7_warmstart_depth7_bs128.py`
   Role: E7 near-capacity warm-start expansion config
   Related items: `init_from = warmstart_path`, `n_layer = 7`, `block_size = 128`
+- Path: `config/train_rocstories_task2_e8_prefix_continuation.py`
+  Role: E8 direct prefix-to-continuation pilot config
+  Related items: `sampling_mode = full_story`, `loss_mode = prefix_to_continuation`, `aux_lm_prob`
+- Path: `config/train_rocstories_task2_e8_masked_anneal_stage1.py`
+  Role: E8 masked-annealing Stage-1 config
+  Related items: Stage 1 of `story_start -> mixed` annealing; see also Stage 2 / Stage 3 configs
 
 # Latest Runs
 - `run_name`: `e1-tinystories-to-rocstories-openai`
@@ -186,6 +208,48 @@
   `avg_loss / ppl`: `3.206 / 24.67`
   `judge score`: `2.0`
   Notes: near-capacity expansion underperformed E4 on both token fit and local judged quality
+- `run_name`: `e5-masked-recovery-openai`
+  `out_dir`: `out-task2-e5-masked-recovery`
+  `dataset_recipe`: `Synthetic continuation-aware polish + masked real ROC recovery`
+  `avg_loss / ppl`: `3.227 / 25.21`
+  `judge score`: `2.0`
+  Notes: masking helped the recovery `ppl` slightly versus the old E5 recovery, but the Stage-1 judge gain still disappeared
+- `run_name`: `e5-masked-recovery-lr2e5-openai`
+  `out_dir`: `out-task2-e5-masked-recovery-lr2e5`
+  `dataset_recipe`: `Synthetic continuation-aware polish + masked real ROC recovery (lr = 2e-5)`
+  `avg_loss / ppl`: `3.227 / 25.20`
+  `judge score`: `2.0`
+  Notes: lower LR did not improve over the base masked-recovery run
+- `run_name`: `e5-masked-recovery-lr3e5-openai`
+  `out_dir`: `out-task2-e5-masked-recovery-lr3e5`
+  `dataset_recipe`: `Synthetic continuation-aware polish + masked real ROC recovery (lr = 3e-5)`
+  `avg_loss / ppl`: `3.227 / 25.20`
+  `judge score`: `2.0`
+  Notes: higher LR also failed to rescue the synthetic line
+- `run_name`: `e5-roc-native-stage1-openai`
+  `out_dir`: `out-task2-e5-roc-native-synth-continuation-weighted`
+  `dataset_recipe`: `ROC-native synthetic continuation-aware polish`
+  `avg_loss / ppl`: `3.520 / 33.79`
+  `judge score`: `2.2`
+  Notes: healthier than the old E5 Stage 1 on `ppl`, but still not a clean overall winner
+- `run_name`: `e5-roc-native-masked-recovery-openai`
+  `out_dir`: `out-task2-e5-roc-native-masked-recovery`
+  `dataset_recipe`: `ROC-native synthetic continuation-aware polish + masked real ROC recovery`
+  `avg_loss / ppl`: `3.149 / 23.32`
+  `judge score`: `2.0`
+  Notes: best token-level fit among the new routes, but the Stage-1 judge gain still disappeared after recovery
+- `run_name`: `e8-prefix-continuation-openai`
+  `out_dir`: `out-task2-e8-prefix-continuation`
+  `dataset_recipe`: `ROCStories full-story prefix-to-continuation pilot`
+  `avg_loss / ppl`: `3.166 / 23.72`
+  `judge score`: `2.0`
+  Notes: direct continuation loss matched prior continuation-weighted ablations rather than beating E4 Step 1
+- `run_name`: `e8-masked-anneal-openai`
+  `out_dir`: `out-task2-e8-masked-anneal`
+  `dataset_recipe`: `ROCStories masked annealing 0.9 -> 0.75 -> 0.6`
+  `avg_loss / ppl`: `3.172 / 23.86`
+  `judge score`: `2.0`
+  Notes: slower annealing did not recover the E4 Step-1 advantage
 
 # Current Status
 - Completed: E1 curriculum, E2 story-aware polish, E3 corrected synthetic-distillation implementation and evaluation; explicit repository-local context workflow was recorded for Task 2 / Task 3.
@@ -197,7 +261,12 @@
 - Completed this round: local ROCStories story metadata was rebuilt from the existing `train.bin` / `val.bin` streams, and the updated E6 / E7 configs now pass local CPU loader sanity checks with the new `warmstart_path` support.
 - Completed this round: the remote E6 and E7 follow-up runs were pulled back locally and synced into the fixed Task 2 results table.
 - Completed this round: a new masked real-data E5 recovery config was added so the next synthetic-salvage test can keep story-boundary masking on during recovery.
-- In progress: decide whether E5 Stage 1's higher local judge merits shortlist attention, and whether masked real-data recovery can preserve any of that gain without keeping the large `ppl` penalty.
+- Completed this round: `e5-masked-recovery-openai` was trained remotely, pulled back locally, and synced into the fixed Task 2 results table.
+- Completed this round: the masked-recovery LR sweep confirmed that `2e-5` and `3e-5` did not improve route 1 beyond the base `e5-masked-recovery-openai` result.
+- Completed this round: the submission-safe decoding sweep for `e4-posteot-mask-openai` and `e5-masked-recovery-openai` was scored; the best E4 sweep only tied the baseline at `t = 0.8, top_k = 80`, and E5 stayed at judge `2.0` across the tested grid.
+- Completed this round: ROC-native synthetic Stage 1 and masked recovery were trained and scored; Stage 1 reduced the old E5 `ppl` collapse while keeping judge `2.2`, but recovery still fell back to judge `2.0`.
+- Completed this round: the direct prefix-to-continuation and masked-annealing pilots were trained and scored; both remained non-winning follow-ups behind `e4-posteot-mask-openai`.
+- Current shortlist question: whether ROC-native synthetic deserves one more follow-up, since it is the only new route that materially reduced the old synthetic Stage-1 distribution damage without fully collapsing judged quality.
 - Current blocker: no scored run has yet improved both local judged quality and token-level fit beyond `e4-posteot-mask-openai`; real-data branches remain stuck around judge `2.0-2.1`, and `ppl ≈ 20` is still far away.
 
 # Decisions
@@ -216,22 +285,29 @@
 - 2026-03-31 | Treat GitHub push/pull as the required bridge between local edits and remote training | Remote shells only see committed and pushed files, so remote execution instructions must include a local push step before any remote `git pull` + train sequence | `out-task2/codex_context.md`, `out-task2/decision_log.md` | Do not reference configs that exist only in the local worktree
 - 2026-03-31 | Keep `e4-posteot-mask-openai` as the real-data leader after scoring E6 and E7 | `e6-mixed-masked`, `e6-gentle-continuation`, and `e7-warmstart-depth7-bs128` all returned judge `2.0` and worse `ppl` than E4 Step 1 | `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/decision_log.md` | Mixed sampling and near-capacity expansion did not extend the E4 gain under the current protocol
 - 2026-03-31 | Prioritize an E5 masked real-data recovery follow-up over rerunning E6/E7 | E6 and E7 already failed under the fixed scorer, while both older recovery recipes turned `mask_after_story_end` off and may have washed out the one clearly helpful supervision cleanup | `config/train_rocstories_task2_e5_masked_recovery.py`, `out-task2/codex_context.md`, `out-task2/decision_log.md` | Test whether synthetic judge-side gains can be partially retained without reintroducing cross-story spillover
+- 2026-03-31 | Treat the submission-safe decoding frontier sweep as a non-winning check rather than a hidden easy gain | The tested `temperature` / `top_k` grid only tied `e4-posteot-mask-openai` at `t = 0.8, k = 80` and never rescued the masked E5 line | `scripts/task2_sample_param_sweep.py`, `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/decision_log.md` | Keep the current E4 decoding defaults unless a later prompt set shows a different frontier
+- 2026-03-31 | Keep `e4-posteot-mask-openai` as the Task 2 anchor after completing routes 1-5 | Masked E5 recovery, ROC-native masked recovery, prefix-to-continuation, and masked annealing all failed to beat it; only ROC-native synthetic Stage 1 reduced the old E5 Stage-1 `ppl` collapse while keeping some judge gain | `out-task2/results.csv`, `out-task2/codex_context.md`, `out-task2/task2_working_notes.md`, `out-task2/decision_log.md` | If experimentation continues, ROC-native synthetic is the only new branch from this round that still looks mildly worth another follow-up
 
 # Verification
 - Already run: `data/rocstories/prepare.py`, E1 / E2 / E3 training branches, the full four-stage E4 line, `task2_generate_and_score.py`, local `py_compile` on the new E4-related Python files, local `py_compile` on the updated Task 2 scorer env-fallback patch, source reread of `train.py`, `model.py`, `data/rocstories/prepare.py`, `data/rocstories_synth/prepare.py`, `eval.py`, `scripts/task2_generate_and_score.py`, and the active Task 2 configs
 - Result: `e4-posteot-mask-openai` reached `3.165 / 23.70 / 2.1`; `e4-continuation-weighted-openai` reached `3.166 / 23.72 / 2.0`; `e4-ending-boost-openai` reached `3.172 / 23.85 / 1.9`; `e4-recovery-openai` reached `3.172 / 23.86 / 1.9`
 - Result: `e5-synth-continuation-weighted-openai` reached `3.796 / 44.51 / 2.4`; `e5-recovery-openai` reached `3.234 / 25.39 / 2.0`
+- Result: `e5-masked-recovery-openai` reached `3.227 / 25.21 / 2.0`, compared with `e5-recovery-openai` at `3.234 / 25.39 / 2.0`.
+- Result: `e5-masked-recovery-lr2e5-openai` and `e5-masked-recovery-lr3e5-openai` both stayed at about `3.227 / 25.20 / 2.0`, so the small LR sweep did not rescue route 1.
 - Result: `data/rocstories/prepare.py --metadata-only` rebuilt the missing `train_*` / `val_*` metadata arrays for `74,601` train and `3,927` val stories from the existing local token streams.
 - Result: `e6-mixed-masked-openai` reached `3.173 / 23.88 / 2.0`; `e6-gentle-continuation-openai` reached `3.177 / 23.98 / 2.0`; `e7-warmstart-depth7-bs128-openai` reached `3.206 / 24.67 / 2.0`.
 - Result: the returned remote checkpoints finished at `iter_num = 16500`, `17500`, and `6000` for E6 Step 1, E6 Step 2, and E7, with checkpoint `best_val_loss` values `3.4166`, `3.4295`, and `3.4504`.
 - Result: the planned `e7-warmstart-depth7-bs128` configuration stayed within the cap at about `31.71M` non-embedding parameters under the current `model.py`, but that capacity increase alone did not improve the fixed-protocol metrics.
-- Unverified risk: E5 Stage 1's `2.4` local judge may reflect proxy-judge preference or synthetic-distribution shift rather than a robust overall story-quality gain; it remains the only line that materially moved the judge, but at an unacceptable token-level cost so far.
-- Unverified risk: even with `mask_after_story_end = True`, a masked real-data recovery may still erase the synthetic judge gain entirely if the root issue is the synthetic distribution itself rather than the recovery recipe.
+- Result: the `e4-posteot-mask-openai` decoding sweep only tied the baseline at `t = 0.8, top_k = 80`, while the `e5-masked-recovery-openai` decoding sweep stayed flat at judge `2.0` across the tested grid.
+- Result: `e5-roc-native-stage1-openai` reached `3.520 / 33.79 / 2.2`; `e5-roc-native-masked-recovery-openai` reached `3.149 / 23.32 / 2.0`.
+- Result: `e8-prefix-continuation-openai` reached `3.166 / 23.72 / 2.0`, and its decoding sweep also stayed flat across the tested grid.
+- Result: `e8-masked-anneal-openai` reached `3.172 / 23.86 / 2.0`.
+- Unverified risk: the old E5 Stage-1 `2.4` judge and the newer ROC-native Stage-1 `2.2` judge may still reflect proxy-judge preference rather than a robust final-eval gain; current recovery recipes continue to erase that synthetic judge-side signal once the model is pulled back toward real ROCStories.
 
 # Next Steps
 - Next 1: on every future Task 2 / Task 3 turn, read this file and `out-task2/task2_working_notes.md` before new work.
 - Next 2: after reading context files, re-read the relevant raw source/config/eval files before each new experiment, bug fix, or report update.
 - Next 3: use `e4-posteot-mask-openai` as the new daily comparison bar for future real-data Task 2 work.
-- Next 4: inspect why `story_start + post-EOT mask` worked better than the broader mixed-sampling E6 variants; the current evidence suggests the gain was fragile to sampling changes.
-- Next 5: run and fixed-score `e5-masked-recovery` to test whether keeping story-boundary masking on during real-data recovery preserves any of the E5 Stage-1 judge gain.
-- Next 6: if `e5-masked-recovery` also fails cleanly, avoid treating wider context or one-step capacity expansion as a default fix; any next branch should have a more targeted hypothesis than the current E7 recipe.
+- Next 4: treat `e4-posteot-mask-openai` as the practical submission anchor unless a later branch clearly beats its `2.1` local judge without giving back token-level fit.
+- Next 5: if experimentation continues, inspect ROC-native Stage-1 and recovery samples and design a more conservative follow-up there before spending more time on the failed masked-E5, E8 prefix-to-continuation, or masked-annealing branches.
+- Next 6: do not expect an easy decoding-only win from the current `sample_params` frontier; the tested sweep only reproduced the E4 baseline rather than improving it.

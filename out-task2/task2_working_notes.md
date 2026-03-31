@@ -14,7 +14,9 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - E4 finally produced a clearer signal: the simple post-`EOT` masking ablation helped, but the heavier continuation-weighted follow-up stages did not extend that gain.
 - E5 added a synthetic continuation-aware backup line. It produced the highest local judge score so far in Stage 1, but with a severe `ppl` regression, and the recovery stage gave up that judge gain while only partly repairing token-level fit.
 - E6 and E7 then tested two different follow-up ideas on real ROCStories: broader mixed sampling and a near-capacity warm-start expansion. Neither beat the simpler E4 Step-1 checkpoint.
-- The next worthwhile follow-up is no longer another E6/E7-style branch. The sharper test is whether E5's proxy-judge gain can survive a real-data recovery that keeps story-boundary masking on.
+- Submission-safe decoding sweeps were then checked as a zero-`ppl`-risk option, but they did not reveal a better frontier; the best E4 setting only tied the existing baseline.
+- A ROC-native synthetic regeneration route was the only partly encouraging new branch: it reduced the old E5 Stage-1 `ppl` collapse while keeping a judge score of `2.2`, but its masked recovery still fell back to judge `2.0`.
+- Two more training-target ideas were also tested directly: full-story prefix-to-continuation batching and masked annealing. Neither beat the simpler E4 Step-1 checkpoint.
 
 ## What is safe to claim
 
@@ -22,9 +24,12 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - Better data and better sampling improved token-level fit.
 - A simple training-target cleanup mattered: masking spillover after the story `EOT` helped more than the heavier continuation-weighted stages that followed.
 - Synthetic continuation-aware polish can raise the local judge, but the current E5 version did so in an unstable way that badly hurt token-level fit.
+- Keeping story-boundary masking on during E5 recovery was not enough to turn the synthetic line into a clean winner.
+- Moving the synthetic source closer to ROCStories looks healthier than the older TinyStories-style synthetic source, but the present recovery recipe still gives up the judge-side gain.
 - For this small model, improving `ppl` turned out to be easier than improving judged story quality.
 - The strongest practical checkpoint so far is `e4-posteot-mask-openai`, because it improved both token-level fit and the local judge without needing the later E4 stages.
 - The E6 and E7 follow-ups strengthen that conclusion: neither broader mixed sampling nor the current 7-layer warm-start recipe improved over E4 Step 1.
+- The decoding sweep result also strengthens that conclusion: there does not appear to be an easy submission-safe generation-parameter fix waiting in the current `temperature / top_k` grid.
 
 ## What should be stated carefully
 
@@ -33,8 +38,10 @@ It should stay lighter than `out-task2/codex_context.md` and `out-task2/results.
 - E3 should not be oversold. It was a meaningful aggressive experiment, but it did not clearly beat E2.
 - The later E4 stages should also not be oversold. Continuation weighting, ending boost, and short recovery were informative ablations, but they did not beat the simpler Step-1 masking result.
 - E5 also needs careful framing. Stage 1 may be useful as a clue about what the judge likes, but it is not a clean winner because its `ppl` regressed sharply; Stage 2 recovered some fit but lost the quality gain.
-- A new masked E5 recovery should still be framed as a targeted salvage test, not as an already-validated improvement.
+- The masked E5 recovery line, including its small LR sweep, is now complete and should be framed as an informative non-winner rather than a pending rescue path.
 - E6 and E7 should now be framed as negative or neutral follow-ups, not pending branches. They were useful ablations, but they did not beat `e4-posteot-mask-openai`.
+- The ROC-native synthetic pilot should be framed carefully too: it was healthier than the old synthetic Stage 1, but it still did not produce a recovery-stage win.
+- Prefix-to-continuation and masked annealing are now completed negative pilots, not pending ideas.
 - The local automatic judge is only a proxy for the final evaluation; it is useful, but not the official private-test scorer.
 
 ## Failure pattern summary
@@ -50,9 +57,13 @@ The main bottleneck is no longer simply dataset choice.
 The deeper problem is that the model still struggles with prompt-conditioned continuation: turning an opening sentence into a compact, coherent, naturally ending short story.
 E4 suggests one concrete part of that problem was real training noise from cross-story spillover. Cleaning that up helped; more aggressive continuation reweighting did not yet produce an additional win.
 E5 suggests a second clue: synthetic continuation-aware training can move the local judge, but the present recipe is too distribution-shifting to keep the model well calibrated on standard token-level fit.
+The masked recovery result strengthens that interpretation: even when the recovery stage keeps the post-`EOT` cleanup, the local judge gain still disappears once the model is pulled back toward real ROCStories.
+The ROC-native synthetic pilot keeps one door open: it reduced the old Stage-1 `ppl` damage from `44.51` to `33.79` while still reaching judge `2.2`, so synthetic source mismatch looks real rather than incidental. But the masked ROC-native recovery still fell back to judge `2.0`, which means the current recovery recipe remains the main bottleneck on that line.
 E6 adds a third clue: the E4 gain was not robust to restoring broader mixed-sampling coverage, so part of that gain may depend on the story-start-heavy training distribution rather than on a universally better objective.
 E7 adds a fourth clue: a near-capacity depth/context expansion by itself is not enough under the current recipe and budget; the bottleneck is not solved just by making the model slightly larger.
-That leaves one particularly concrete unresolved question: whether the old E5 recovery recipe failed partly because it abandoned the post-`EOT` masking cleanup instead of only because the synthetic distribution shift was too strong.
+The decoding sweep result matters mostly as a negative control: the current judged-quality ceiling does not look like a simple `sample_params.json` mistake, because the tested frontier only reproduced the existing E4 score.
+That specific masking question is now partly answered: turning the mask back on helped only marginally on token fit and did not recover judged quality, so the dominant issue appears to be the synthetic distribution shift itself rather than the missing mask alone.
+The E8 pilots reinforce the broader lesson: making the continuation target more explicit or annealing toward broader coverage did not outperform the simpler post-`EOT` masking fix once everything was scored under the same protocol.
 
 ## If writing the report now
 
@@ -68,7 +79,7 @@ Main Task 2 arc:
 
 ## Next-step note
 
-If experimentation continues, the next useful branch should change the training target more directly around opening-to-story continuation rather than only changing the source corpus again.
-This direction has now been tested more fully: story-bounded masking worked best, while the heavier continuation-weighted stages, the broader mixed-sampling follow-up, and the current near-capacity warm-start expansion all failed to surpass it.
-The synthetic backup route should still stay separate in reporting: it surfaced an interesting judge-side gain, but the real-data bar to beat remains `e4-posteot-mask-openai` until that gain can be retained without the large `ppl` penalty.
-The next execution plan should no longer treat E6 or E7 as pending. Instead, it should explain why the E4 Step-1 gain disappeared under broader sampling and whether the only judge-moving line, E5, can be stabilized without breaking token-level fit, starting with a masked real-data recovery rather than another fresh architecture branch.
+If experimentation continues, the real-data anchor should still be `e4-posteot-mask-openai`.
+This direction has now been tested more fully: story-bounded masking worked best, while the heavier continuation-weighted stages, the broader mixed-sampling follow-up, the current near-capacity warm-start expansion, the prefix-to-continuation pilot, and masked annealing all failed to surpass it.
+The synthetic backup route should still stay separate in reporting: it surfaced an interesting judge-side gain, and the ROC-native synthetic source looked healthier than the old one, but the real-data bar to beat remains `e4-posteot-mask-openai` until that gain can be retained without the recovery-stage collapse.
+The next execution plan should no longer treat masked E5 recovery, decoding sweeps, E8 prefix-to-continuation, or masked annealing as priority branches. The only new line from this round that still looks mildly worth another follow-up is ROC-native synthetic with a more conservative recovery design.
